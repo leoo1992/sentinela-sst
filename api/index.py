@@ -328,7 +328,12 @@ def root():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "storage": "disabled", "processing": "derived-metrics-only"}
+    return {
+        "status": "ok",
+        "storage": "disabled",
+        "processing": "derived-metrics-only",
+        "gemini_configured": bool(os.environ.get("GOOGLE_API_KEY", "").strip()),
+    }
 
 @app.get("/api/modules")
 def modules():
