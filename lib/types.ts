@@ -49,6 +49,9 @@ export interface PpeAssessment {
   colete: PpeItem;
   luvas: PpeItem;
   calcado: PpeItem;
+  cinturao: PpeItem;
+  talabarte: PpeItem;
+  travaQuedas: PpeItem;
 }
 
 export interface Finding {
