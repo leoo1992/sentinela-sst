@@ -19,6 +19,10 @@ def _synthetic_worker_image() -> str:
     cv2.rectangle(image, (90, 245), (420, 275), (220, 220, 220), -1)
     cv2.rectangle(image, (90, 360), (420, 390), (220, 220, 220), -1)
 
+    # Luvas marrons/tan na região central inferior.
+    cv2.rectangle(image, (145, 300), (250, 405), (55, 125, 180), -1)
+    cv2.rectangle(image, (265, 300), (370, 405), (55, 125, 180), -1)
+
     ok, encoded = cv2.imencode(".jpg", image)
     assert ok
     return base64.b64encode(encoded.tobytes()).decode("ascii")
@@ -39,3 +43,4 @@ def test_opencv_detecta_capacete_e_vestimenta_sem_gemini(monkeypatch):
     assert response["engines"]["gemini"] is False
     assert response["items"]["capacete"]["status"] == "detectado"
     assert response["items"]["colete"]["status"] == "detectado"
+    assert response["items"]["luvas"]["status"] == "detectado"
