@@ -1,11 +1,7 @@
-import json
-import os
-import urllib.error
-import urllib.request
 from enum import Enum
 from typing import Dict, Literal, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 from backend.ppe_cv import analyze_ppe_cv
@@ -55,7 +51,7 @@ class PosePoint(BaseModel):
     y: float = Field(ge=0, le=1)
     score: float = Field(default=0, ge=0, le=1)
 
-class GeminiImageRequest(BaseModel):
+class PpeImageRequest(BaseModel):
     module: Literal["epi"] = "epi"
     image_base64: str = Field(min_length=100, max_length=6_000_000)
     mime_type: Literal["image/jpeg", "image/png", "image/webp"] = "image/jpeg"
@@ -190,20 +186,6 @@ PPE_LABELS = {
     "travaQuedas": "Trava-quedas",
 }
 
-def _gemini_output_text(data: dict) -> str:
-    direct = data.get("output_text")
-    if isinstance(direct, str) and direct.strip():
-        return direct.strip()
-
-    parts: list[str] = []
-    for step in data.get("steps", []) or []:
-        if step.get("type") != "model_output":
-            continue
-        for content in step.get("content", []) or []:
-            if content.get("type") == "text" and isinstance(content.get("text"), str):
-                parts.append(content["text"])
-    return "".join(parts).strip()
-
 def _plain_item(raw, key_name: str) -> Optional[dict]:
     if raw is None:
         return None
@@ -231,11 +213,10 @@ def _plain_item(raw, key_name: str) -> Optional[dict]:
         "note": note if isinstance(note, str) and note.strip() else None,
     }
 
-def _fuse_ppe_item(key_name: str, local_raw, opencv_raw, gemini_raw) -> dict:
+def _fuse_ppe_item(key_name: str, local_raw, opencv_raw) -> dict:
     sources = {
         "TensorFlow": _plain_item(local_raw, key_name),
         "OpenCV": _plain_item(opencv_raw, key_name),
-        "Gemini": _plain_item(gemini_raw, key_name),
     }
     available = [(name, value) for name, value in sources.items() if value]
     detected = [(name, value) for name, value in available if value["status"] == "detectado"]
@@ -244,7 +225,7 @@ def _fuse_ppe_item(key_name: str, local_raw, opencv_raw, gemini_raw) -> dict:
 
     strong_detected = []
     for name, value in detected:
-        threshold = 0.55 if name == "Gemini" else 0.68
+        threshold = 0.68
         if name == "OpenCV":
             if key_name == "luvas":
                 threshold = 0.58
@@ -272,7 +253,7 @@ def _fuse_ppe_item(key_name: str, local_raw, opencv_raw, gemini_raw) -> dict:
             "label": PPE_LABELS[key_name],
             "status": "detectado",
             "confidence": max(0.58, min(0.88, confidence)),
-            "note": "Duas fontes independentes encontraram sinais compatíveis com este EPI.",
+            "note": "TensorFlow e OpenCV encontraram sinais compatíveis com este EPI.",
         }
 
     if detected:
@@ -281,16 +262,7 @@ def _fuse_ppe_item(key_name: str, local_raw, opencv_raw, gemini_raw) -> dict:
             "label": PPE_LABELS[key_name],
             "status": "incerto",
             "confidence": best["confidence"],
-            "note": f"{name} encontrou indício do EPI, mas faltou confirmação de outra análise.",
-        }
-
-    gemini_missing = next((value for name, value in missing if name == "Gemini" and value["confidence"] >= 0.82), None)
-    if gemini_missing and not uncertain:
-        return {
-            "label": PPE_LABELS[key_name],
-            "status": "nao_detectado",
-            "confidence": gemini_missing["confidence"],
-            "note": gemini_missing.get("note") or "O EPI não foi identificado na região visível.",
+            "note": f"{name} encontrou indício do EPI, mas a outra análise não confirmou.",
         }
 
     if len(missing) >= 2:
@@ -299,7 +271,7 @@ def _fuse_ppe_item(key_name: str, local_raw, opencv_raw, gemini_raw) -> dict:
             "label": PPE_LABELS[key_name],
             "status": "nao_detectado",
             "confidence": min(0.86, confidence),
-            "note": "Mais de uma análise não identificou este EPI na região visível.",
+            "note": "TensorFlow e OpenCV não identificaram este EPI na região visível.",
         }
 
     if uncertain:
@@ -311,6 +283,15 @@ def _fuse_ppe_item(key_name: str, local_raw, opencv_raw, gemini_raw) -> dict:
             "note": best.get("note") or f"{name} encontrou informação visual inconclusiva.",
         }
 
+    if missing:
+        name, best = max(missing, key=lambda pair: pair[1]["confidence"])
+        return {
+            "label": PPE_LABELS[key_name],
+            "status": "nao_detectado" if best["confidence"] >= 0.72 else "incerto",
+            "confidence": best["confidence"],
+            "note": best.get("note") or f"{name} não identificou este EPI.",
+        }
+
     return {
         "label": PPE_LABELS[key_name],
         "status": "nao_avaliavel",
@@ -318,107 +299,8 @@ def _fuse_ppe_item(key_name: str, local_raw, opencv_raw, gemini_raw) -> dict:
         "note": "Não houve informação visual suficiente para avaliar este item.",
     }
 
-def _call_gemini(request: GeminiImageRequest, keys: list[str]) -> tuple[Optional[dict], Optional[str]]:
-    key = os.environ.get("GOOGLE_API_KEY", "").strip()
-    if not key:
-        return None, "GOOGLE_API_KEY não configurada."
-
-    item_schema = {
-        "type": "object",
-        "properties": {
-            "status": {
-                "type": "string",
-                "enum": ["detectado", "nao_detectado", "incerto", "nao_avaliavel"],
-            },
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-            "note": {"type": "string"},
-        },
-        "required": ["status", "confidence", "note"],
-    }
-    response_schema = {
-        "type": "object",
-        "properties": {
-            "items": {
-                "type": "object",
-                "properties": {key_name: item_schema for key_name in keys},
-                "required": keys,
-            },
-            "summary": {"type": "string"},
-        },
-        "required": ["items", "summary"],
-    }
-
-    prompt = """
-Você analisa uma FOTO enviada para inspeção visual de EPI em Segurança do Trabalho.
-Ignore marcas d'água, textos, logos e elementos de interface. Avalie a pessoa real da foto.
-Analise SOMENTE o que está visualmente presente. Não invente EPI oculto.
-
-Classificação:
-- detectado: o EPI está claramente identificável.
-- nao_detectado: a região está claramente visível e o EPI claramente não está presente.
-- incerto: há sinal compatível, mas falta detalhe para confirmar.
-- nao_avaliavel: a região está cortada, oculta, distante ou sem definição.
-
-Regras:
-- Capacete: capacete de segurança industrial na cabeça.
-- Óculos: óculos de proteção/goggles cobrindo ou protegendo os olhos.
-- Colete/vestimenta refletiva: aceite colete OU uniforme/jaqueta de alta visibilidade com faixas refletivas.
-- Luvas: luvas de proteção cobrindo as mãos.
-- Calçado: só avalie quando os pés estiverem visíveis.
-- Cinturão paraquedista: exige tiras próprias de arnês no tronco/quadril/pernas; não confunda colete, suspensório ou uniforme.
-- Talabarte: exige fita/cabo e conectores visíveis ligados ao sistema antiqueda.
-- Trava-quedas: exige o dispositivo e sua conexão à linha de vida/cabo/corda/trilho visíveis.
-Use confiança alta apenas quando o item estiver realmente visível.
-Retorne notas curtas em português.
-""".strip()
-
-    body = {
-        "model": "gemini-3.8-flash",
-        "store": False,
-        "input": [
-            {"type": "text", "text": prompt},
-            {
-                "type": "image",
-                "data": request.image_base64,
-                "mime_type": request.mime_type,
-            },
-        ],
-        "generation_config": {"thinking_level": "low"},
-        "response_format": {
-            "type": "text",
-            "mime_type": "application/json",
-            "schema": response_schema,
-        },
-    }
-
-    gemini_request = urllib.request.Request(
-        "https://generativelanguage.googleapis.com/v1beta/interactions",
-        data=json.dumps(body).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "x-goog-api-key": key,
-            "Api-Revision": "2026-05-20",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(gemini_request, timeout=35) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        output_text = _gemini_output_text(data)
-        parsed = json.loads(output_text)
-        raw_items = parsed.get("items", {}) if isinstance(parsed, dict) else {}
-        return raw_items if isinstance(raw_items, dict) else {}, None
-    except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", errors="replace")
-        print("Gemini HTTP error", error.code, detail[:600])
-        return None, f"Gemini HTTP {error.code}"
-    except Exception as error:
-        print("Gemini PPE analysis failed", repr(error))
-        return None, error.__class__.__name__
-
 @app.post("/api/analyze-ppe-image")
-def analyze_ppe_image(request: GeminiImageRequest):
+def analyze_ppe_image(request: PpeImageRequest):
     keys = ["capacete", "oculos", "colete", "luvas", "calcado"]
 
     pose = (
@@ -438,7 +320,6 @@ def analyze_ppe_image(request: GeminiImageRequest):
         print("OpenCV PPE analysis failed", repr(error))
         opencv_error = error.__class__.__name__
 
-    gemini_items, gemini_error = _call_gemini(request, keys)
     local_items = request.local_ppe or {}
 
     fused = {
@@ -446,7 +327,6 @@ def analyze_ppe_image(request: GeminiImageRequest):
             key_name,
             local_items.get(key_name),
             opencv_items.get(key_name),
-            gemini_items.get(key_name) if gemini_items else None,
         )
         for key_name in keys
     }
@@ -459,11 +339,9 @@ def analyze_ppe_image(request: GeminiImageRequest):
         "engines": {
             "tensorflow": bool(local_items),
             "opencv": bool(opencv_items),
-            "gemini": bool(gemini_items),
         },
         "diagnostics": {
             "opencv_error": opencv_error,
-            "gemini_error": gemini_error,
         },
     }
 
@@ -477,9 +355,8 @@ def health():
         "status": "ok",
         "storage": "disabled",
         "processing": "derived-metrics-only",
-        "gemini_configured": bool(os.environ.get("GOOGLE_API_KEY", "").strip()),
         "opencv_enabled": True,
-        "image_fusion": "tensorflow+opencv+gemini",
+        "image_fusion": "tensorflow+opencv",
     }
 
 @app.get("/api/modules")
