@@ -2,14 +2,18 @@
 
 Aplicação full-stack de visão computacional em tempo real voltada a Segurança e Saúde no Trabalho. O projeto usa **Next.js + TypeScript** no frontend e **FastAPI + Python** no backend, com deploy unificado na Vercel.
 
-## Módulos
+## Escopo
 
-| Módulo | Objetivo |
-| --- | --- |
-| Inspeção de EPI | Checklist visual experimental de capacete, óculos, colete, luvas e calçado. |
-| Segurança em Altura | Pose, capacete e uma zona virtual configurável de borda/risco. |
-| Análise Ergonômica | Esqueleto e métricas de tronco, pescoço, joelhos e assimetrias. |
-| Levantamento de Cargas | Fase aproximada do movimento e indicadores posturais durante o levantamento. |
+O projeto está focado exclusivamente em **Inspeção de EPI**.
+
+Itens avaliados:
+- capacete;
+- óculos de proteção;
+- colete ou vestimenta refletiva;
+- luvas de proteção;
+- calçado fechado.
+
+Fotos enviadas passam por análise combinada entre TensorFlow/MoveNet, heurísticas locais, OpenCV no backend e Gemini quando a chave está configurada.
 
 ## Privacidade por arquitetura
 
@@ -51,9 +55,9 @@ O workflow de CI executa essas verificações na branch **master**.
 
 ## Limitações
 
-Este é um protótipo técnico e de portfólio, não um sistema certificado para tomada de decisão de SST. A inspeção de EPI combina TensorFlow/MoveNet Thunder para fotos, heurísticas locais, OpenCV no backend e uma segunda análise semântica opcional pelo Gemini. Itens pequenos, ocultos ou sem definição suficiente devem permanecer inconclusivos ou não avaliáveis, especialmente cinturão, talabarte e trava-quedas.
+Este é um protótipo técnico e de portfólio, não um sistema certificado para tomada de decisão de SST. Itens pequenos, ocultos, desfocados ou fora do enquadramento devem permanecer inconclusivos ou não avaliáveis.
 
-Os indicadores não substituem inspeção presencial, APR, análise ergonômica formal, laudos, normas aplicáveis ou profissional legalmente habilitado.
+Os indicadores não substituem inspeção presencial, procedimentos aplicáveis ou profissional responsável pela atividade.
 
 ## Licença
 
