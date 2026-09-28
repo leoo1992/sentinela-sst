@@ -18,8 +18,9 @@ A aplicação foi desenhada para **não armazenar vídeo, imagem ou histórico**
 1. A câmera é aberta pelo navegador com getUserMedia.
 2. MoveNet/TensorFlow.js executa a estimativa de pose no dispositivo.
 3. O frontend extrai métricas derivadas como ângulos e estados visuais.
-4. FastAPI recebe apenas essas métricas e aplica regras.
-5. Nenhum frame de vídeo é enviado ao backend.
+4. FastAPI recebe as métricas derivadas e aplica regras.
+5. A câmera ao vivo continua processada localmente, sem envio de frames.
+6. Em fotos enviadas manualmente, uma versão reduzida da imagem pode ser enviada ao Gemini para complementar a identificação de EPI; a foto não é armazenada pela aplicação.
 
 ## Stack
 
@@ -50,7 +51,7 @@ O workflow de CI executa essas verificações na branch **master**.
 
 ## Limitações
 
-Este é um protótipo técnico e de portfólio, não um sistema certificado para tomada de decisão de SST. A inspeção de EPI usa pose e heurísticas visuais leves para preservar execução no celular e privacidade. EPIs transparentes, pequenos, de cores não previstas ou parcialmente ocultos podem ficar inconclusivos.
+Este é um protótipo técnico e de portfólio, não um sistema certificado para tomada de decisão de SST. A inspeção de EPI combina pose/heurísticas locais com uma segunda análise visual opcional pelo Gemini nas fotos enviadas. Itens pequenos, ocultos ou sem definição suficiente devem permanecer inconclusivos ou não avaliáveis, especialmente cinturão, talabarte e trava-quedas.
 
 Os indicadores não substituem inspeção presencial, APR, análise ergonômica formal, laudos, normas aplicáveis ou profissional legalmente habilitado.
 

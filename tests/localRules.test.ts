@@ -28,3 +28,26 @@ describe('local rules', () => {
     expect(result.findings[0].severity).toBe('alert');
   });
 });
+
+
+it('mantém avaliação de EPI mesmo sem pose corporal', () => {
+  const result = evaluateLocally({
+    module: 'epi',
+    metrics: null,
+    ppe: {
+      capacete: { label: 'Capacete', status: 'detectado', confidence: 0.95 },
+      oculos: { label: 'Óculos de proteção', status: 'detectado', confidence: 0.88 },
+      colete: { label: 'Colete refletivo', status: 'detectado', confidence: 0.9 },
+      luvas: { label: 'Luvas', status: 'detectado', confidence: 0.86 },
+      calcado: { label: 'Calçado fechado', status: 'nao_avaliavel', confidence: 0.1 },
+      cinturao: { label: 'Cinturão paraquedista', status: 'nao_avaliavel', confidence: 0 },
+      talabarte: { label: 'Talabarte', status: 'nao_avaliavel', confidence: 0 },
+      travaQuedas: { label: 'Trava-quedas', status: 'nao_avaliavel', confidence: 0 },
+    },
+    zoneRisk: false,
+    liftingPhase: null,
+  });
+
+  expect(result.findings.some((entry) => entry.code === 'epi-capacete-ok')).toBe(true);
+  expect(result.findings.some((entry) => entry.code === 'epi-oculos-ok')).toBe(true);
+});

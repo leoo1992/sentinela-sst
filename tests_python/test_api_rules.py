@@ -13,3 +13,22 @@ def test_altura_alerta_zona_risco():
 def test_sem_pose_retorna_estado_aguardando():
     result = evaluate(EvaluationRequest(module="cargas", metrics=None))
     assert result.findings[0].code == "pose-missing"
+
+
+def test_epi_can_be_evaluated_without_pose():
+    payload = api.EvaluationRequest(
+        module="epi",
+        metrics=None,
+        ppe={
+            "capacete": api.PpeItem(label="Capacete", status="detectado", confidence=0.95),
+            "oculos": api.PpeItem(label="Óculos de proteção", status="detectado", confidence=0.9),
+            "colete": api.PpeItem(label="Colete refletivo", status="detectado", confidence=0.9),
+            "luvas": api.PpeItem(label="Luvas", status="detectado", confidence=0.85),
+            "calcado": api.PpeItem(label="Calçado fechado", status="nao_avaliavel", confidence=0.1),
+        },
+        zone_risk=False,
+        lifting_phase=None,
+    )
+    result = api.evaluate(payload)
+    assert any(item.code == "epi-capacete-ok" for item in result.findings)
+    assert any(item.code == "epi-oculos-ok" for item in result.findings)

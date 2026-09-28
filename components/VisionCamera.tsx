@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { calculatePoseMetrics, inferLiftingPhase, isPoseNearRiskZone, namedPoint, primaryPose } from '@/lib/geometry';
 import { evaluateLocally } from '@/lib/localRules';
 import { inspectPpe } from '@/lib/ppe';
-import type { EvaluationPayload, EvaluationResponse, Finding, ModuleId, PoseLike, PoseMetrics, PpeAssessment } from '@/lib/types';
+import type { EvaluationPayload, EvaluationResponse, Finding, ModuleId, PoseLike, PoseMetrics, PpeAssessment, PpeItem } from '@/lib/types';
 
 type FacingMode = 'user' | 'environment';
 type VisionSource = HTMLVideoElement | HTMLImageElement;
@@ -49,6 +49,108 @@ function ppeEntriesForModule(ppe: PpeAssessment, moduleId: ModuleId) {
     ? ['capacete', 'cinturao', 'talabarte', 'travaQuedas']
     : ['capacete', 'oculos', 'colete', 'luvas', 'calcado'];
   return keys.map((key) => ppe[key]);
+}
+
+const PPE_LABELS: Record<keyof PpeAssessment, string> = {
+  capacete: 'Capacete',
+  oculos: 'Óculos de proteção',
+  colete: 'Colete refletivo',
+  luvas: 'Luvas',
+  calcado: 'Calçado fechado',
+  cinturao: 'Cinturão paraquedista',
+  talabarte: 'Talabarte',
+  travaQuedas: 'Trava-quedas',
+};
+
+function emptyPpeAssessment(): PpeAssessment {
+  return Object.fromEntries(
+    (Object.keys(PPE_LABELS) as Array<keyof PpeAssessment>).map((key) => [
+      key,
+      {
+        label: PPE_LABELS[key],
+        status: 'nao_avaliavel',
+        confidence: 0,
+        note: 'Não foi possível avaliar este item.',
+      } satisfies PpeItem,
+    ]),
+  ) as unknown as PpeAssessment;
+}
+
+function mergePpeItem(local: PpeItem, gemini?: PpeItem): PpeItem {
+  if (!gemini) return local;
+
+  const aiItem: PpeItem = {
+    ...gemini,
+    note: gemini.note ? `Análise visual: ${gemini.note}` : undefined,
+  };
+
+  if (gemini.status === 'detectado' && gemini.confidence >= 0.52) return aiItem;
+
+  if (
+    local.status === 'detectado' &&
+    local.confidence >= 0.62 &&
+    gemini.status !== 'nao_detectado'
+  ) {
+    return local;
+  }
+
+  if (gemini.status === 'nao_detectado' && gemini.confidence >= 0.72) {
+    if (local.status === 'detectado' && local.confidence >= 0.68) {
+      return {
+        ...gemini,
+        status: 'incerto',
+        confidence: Math.max(local.confidence, gemini.confidence),
+        note: 'As análises visuais divergiram. Confirme o EPI presencialmente.',
+      };
+    }
+    return aiItem;
+  }
+
+  if (gemini.status === 'incerto') {
+    return local.status === 'detectado' && local.confidence >= 0.68 ? local : aiItem;
+  }
+
+  if (gemini.status === 'nao_avaliavel') {
+    return local.status === 'detectado' ? local : aiItem;
+  }
+
+  return aiItem;
+}
+
+function mergePpeAssessments(
+  local: PpeAssessment | null,
+  gemini: Partial<PpeAssessment> | null,
+): PpeAssessment {
+  const base = local ?? emptyPpeAssessment();
+  if (!gemini) return base;
+
+  return Object.fromEntries(
+    (Object.keys(PPE_LABELS) as Array<keyof PpeAssessment>).map((key) => [
+      key,
+      mergePpeItem(base[key], gemini[key]),
+    ]),
+  ) as unknown as PpeAssessment;
+}
+
+function imageForGemini(image: HTMLImageElement) {
+  const maxSide = 1280;
+  const largest = Math.max(image.naturalWidth, image.naturalHeight);
+  const scale = largest > maxSide ? maxSide / largest : 1;
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Não foi possível preparar a imagem.');
+
+  context.drawImage(image, 0, 0, width, height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+  const imageBase64 = dataUrl.split(',', 2)[1];
+  if (!imageBase64) throw new Error('Não foi possível preparar a imagem.');
+
+  return { imageBase64, mimeType: 'image/jpeg' as const };
 }
 
 export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
@@ -250,6 +352,30 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     }
   }, []);
 
+  const analyzePpeWithGemini = useCallback(async (image: HTMLImageElement) => {
+    if (moduleId !== 'epi' && moduleId !== 'altura') return null;
+
+    try {
+      const prepared = imageForGemini(image);
+      const response = await fetch('/api/analyze-ppe-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module: moduleId,
+          image_base64: prepared.imageBase64,
+          mime_type: prepared.mimeType,
+        }),
+      });
+
+      if (!response.ok) return null;
+      const data = (await response.json()) as { items?: Partial<PpeAssessment> };
+      return data.items ?? null;
+    } catch (geminiError) {
+      console.warn('Análise complementar de EPI indisponível', geminiError);
+      return null;
+    }
+  }, [moduleId]);
+
   const runFrame = useCallback(async (timestamp: number) => {
     if (!runningRef.current) return;
     const video = videoRef.current, detector = detectorRef.current;
@@ -333,8 +459,10 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
       setMetrics(currentMetrics);
 
       let currentPpe: PpeAssessment | null = null;
-      if (primary && (moduleId === 'epi' || moduleId === 'altura')) {
-        currentPpe = inspectPpe(image, primary);
+      if (moduleId === 'epi' || moduleId === 'altura') {
+        const localPpe = primary ? inspectPpe(image, primary) : null;
+        const geminiPpe = await analyzePpeWithGemini(image);
+        currentPpe = mergePpeAssessments(localPpe, geminiPpe);
       }
       currentPpeRef.current = currentPpe;
       setPpe(currentPpe);
@@ -377,7 +505,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     } finally {
       setImageAnalyzing(false);
     }
-  }, [clearOverlay, drawOverlay, ensureDetector, moduleId, riskSide, riskWidth, sendToBackend]);
+  }, [analyzePpeWithGemini, clearOverlay, drawOverlay, ensureDetector, moduleId, riskSide, riskWidth, sendToBackend]);
 
   const handleImageSelection = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -396,6 +524,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
 
     stopCamera();
     clearImage();
+    setImageAnalyzing(true);
     setFindings([]);
     setMetrics(null);
     setPpe(null);
@@ -506,6 +635,15 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
 
   return (
     <section className="visionGrid">
+      {imageAnalyzing && (
+        <div className="analysisLoadingOverlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="analysisLoadingCard">
+            <span className="analysisSpinner" aria-hidden="true" />
+            <strong>Analisando imagem</strong>
+            <p>Verificando pessoas, postura e equipamentos de proteção…</p>
+          </div>
+        </div>
+      )}
       <div className="cameraCard">
         <div className="cameraToolbar">
           <div><p className="sectionKicker">ENTRADA PARA ANÁLISE</p><h3>{moduleTitles[moduleId]}</h3></div>

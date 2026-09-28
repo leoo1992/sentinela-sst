@@ -16,8 +16,18 @@ export function evaluateLocally(payload: EvaluationPayload): EvaluationResponse 
   const metrics = payload.metrics;
 
   if (!metrics) {
-    findings.push(finding('pose-missing', 'Pessoa não localizada', 'Posicione o corpo dentro do enquadramento para iniciar a análise.', 'info'));
-    return { module: payload.module, findings, summary: 'Aguardando uma pessoa no enquadramento.' };
+    findings.push(finding(
+      'pose-missing',
+      'Postura não localizada',
+      payload.module === 'epi' || payload.module === 'altura'
+        ? 'A postura corporal não pôde ser calculada, mas os EPIs visíveis ainda podem ser avaliados.'
+        : 'Posicione o corpo dentro do enquadramento para iniciar a análise.',
+      'info',
+    ));
+
+    if (payload.module !== 'epi' && payload.module !== 'altura') {
+      return { module: payload.module, findings, summary: 'Aguardando uma pessoa no enquadramento.' };
+    }
   }
 
   if (payload.module === 'epi') {
@@ -41,7 +51,7 @@ export function evaluateLocally(payload: EvaluationPayload): EvaluationResponse 
     }
   }
 
-  if (payload.module === 'ergonomia') {
+  if (payload.module === 'ergonomia' && metrics) {
     if (metrics.trunkInclination !== null) {
       if (metrics.trunkInclination >= 45) findings.push(finding('ergo-trunk-high', 'Inclinação elevada do tronco', 'Tronco estimado em ' + metrics.trunkInclination + '° em relação à vertical.', 'alert'));
       else if (metrics.trunkInclination >= 22) findings.push(finding('ergo-trunk-medium', 'Inclinação moderada do tronco', 'Tronco estimado em ' + metrics.trunkInclination + '°.', 'attention'));
@@ -51,7 +61,7 @@ export function evaluateLocally(payload: EvaluationPayload): EvaluationResponse 
     if (metrics.kneeAsymmetry !== null && metrics.kneeAsymmetry >= 16) findings.push(finding('ergo-knee-asymmetry', 'Assimetria entre joelhos', 'Diferença angular estimada de ' + metrics.kneeAsymmetry + '°.', 'attention'));
   }
 
-  if (payload.module === 'cargas') {
+  if (payload.module === 'cargas' && metrics) {
     if (payload.liftingPhase) findings.push(finding('lift-phase', payload.liftingPhase, 'Fase estimada a partir dos ângulos de quadril, joelho e tronco.', 'info'));
     if (metrics.trunkInclination !== null && metrics.trunkInclination >= 42) findings.push(finding('lift-trunk', 'Flexão elevada do tronco', 'Inclinação estimada em ' + metrics.trunkInclination + '° durante o movimento.', 'alert'));
     else if (metrics.trunkInclination !== null) findings.push(finding('lift-trunk-ok', 'Controle do tronco', 'Inclinação estimada em ' + metrics.trunkInclination + '°.', metrics.trunkInclination >= 25 ? 'attention' : 'ok'));
