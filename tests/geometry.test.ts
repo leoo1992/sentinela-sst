@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { angleBetween, inferLiftingPhase } from '@/lib/geometry';
-import type { PoseMetrics } from '@/lib/types';
+import { angleBetween, inferLiftingPhase } from '../lib/geometry';
+import type { PoseMetrics } from '../lib/types';
 
 describe('geometry', () => {
   it('calcula ângulo reto', () => {
