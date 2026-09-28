@@ -13,7 +13,7 @@ Itens avaliados:
 - luvas de proteção;
 - calçado fechado.
 
-Fotos enviadas passam por análise combinada entre TensorFlow/MoveNet, heurísticas locais, OpenCV no backend e Gemini quando a chave está configurada.
+Fotos enviadas passam por análise combinada entre TensorFlow/MoveNet, heurísticas locais e OpenCV no backend.
 
 ## Privacidade por arquitetura
 
@@ -24,11 +24,11 @@ A aplicação foi desenhada para **não armazenar vídeo, imagem ou histórico**
 3. O frontend extrai métricas derivadas como ângulos e estados visuais.
 4. FastAPI recebe as métricas derivadas e aplica regras.
 5. A câmera ao vivo continua processada localmente, sem envio de frames.
-6. Em fotos enviadas manualmente, uma versão reduzida é analisada pelo backend com OpenCV e, quando configurado, pelo Gemini; o resultado é combinado com o TensorFlow/MoveNet do navegador. A aplicação não mantém histórico nem armazena a foto.
+6. Em fotos enviadas manualmente, uma versão reduzida é analisada pelo backend com OpenCV e o resultado é combinado com o TensorFlow/MoveNet do navegador. A aplicação não mantém histórico nem armazena a foto.
 
 ## Stack
 
-Next.js 16, React 19, TypeScript, TensorFlow.js, MoveNet SinglePose, Python 3.12, FastAPI, OpenCV, Gemini, Vitest, Pytest, GitHub Actions e Vercel.
+Next.js 16, React 19, TypeScript, TensorFlow.js, MoveNet SinglePose, Python 3.12, FastAPI, OpenCV, Vitest, Pytest, GitHub Actions e Vercel.
 
 ## Executar
 
