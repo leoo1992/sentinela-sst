@@ -322,6 +322,22 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     currentPpeRef.current = null; setPpe(null); setMetrics(null); setZoneRisk(false); setLiftingPhase(null);
   }, [moduleId, running]);
 
+  useEffect(() => {
+    if (!runningRef.current) return;
+
+    if (animationRef.current !== null) {
+      cancelAnimationFrame(animationRef.current);
+    }
+
+    animationRef.current = requestAnimationFrame(runFrame);
+
+    return () => {
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [runFrame]);
+
   useEffect(() => () => {
     runningRef.current = false;
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
