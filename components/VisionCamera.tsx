@@ -177,6 +177,7 @@ export default function VisionCamera() {
   const cameraDetectorRef = useRef<PoseDetectorLike | null>(null);
   const imageDetectorRef = useRef<PoseDetectorLike | null>(null);
   const animationRef = useRef<number | null>(null);
+  const runCameraFrameRef = useRef<((timestamp: number) => void) | null>(null);
   const runningRef = useRef(false);
   const lastFrameRef = useRef(0);
 
@@ -445,17 +446,23 @@ export default function VisionCamera() {
     if (imageRef.current) void analyzeImage(imageRef.current);
   }, [analyzeImage]);
 
+  const scheduleCameraFrame = useCallback(() => {
+    animationRef.current = requestAnimationFrame((timestamp) => {
+      runCameraFrameRef.current?.(timestamp);
+    });
+  }, []);
+
   const runCameraFrame = useCallback(async (timestamp: number) => {
     if (!runningRef.current) return;
 
     const video = videoRef.current;
     if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
-      animationRef.current = requestAnimationFrame(runCameraFrame);
+      scheduleCameraFrame();
       return;
     }
 
     if (timestamp - lastFrameRef.current < 300) {
-      animationRef.current = requestAnimationFrame(runCameraFrame);
+      scheduleCameraFrame();
       return;
     }
     lastFrameRef.current = timestamp;
@@ -463,7 +470,7 @@ export default function VisionCamera() {
     try {
       const detector = cameraDetectorRef.current;
       if (!detector) {
-        animationRef.current = requestAnimationFrame(runCameraFrame);
+        scheduleCameraFrame();
         return;
       }
 
@@ -487,8 +494,8 @@ export default function VisionCamera() {
       console.error('Falha durante análise da câmera', cameraError);
     }
 
-    animationRef.current = requestAnimationFrame(runCameraFrame);
-  }, [facingMode]);
+    scheduleCameraFrame();
+  }, [facingMode, scheduleCameraFrame]);
 
   const startCamera = useCallback(async (mode: FacingMode = facingMode) => {
     setError(null);
@@ -519,7 +526,7 @@ export default function VisionCamera() {
       runningRef.current = true;
       setRunning(true);
       setAnalysisNote('Análise ao vivo ativa.');
-      animationRef.current = requestAnimationFrame(runCameraFrame);
+      scheduleCameraFrame();
     } catch (cameraError) {
       console.error('Falha ao abrir câmera', cameraError);
       stopCamera();
@@ -536,6 +543,10 @@ export default function VisionCamera() {
       await startCamera(next);
     }
   }, [facingMode, startCamera]);
+
+  useEffect(() => {
+    runCameraFrameRef.current = runCameraFrame;
+  }, [runCameraFrame]);
 
   useEffect(() => () => {
     runningRef.current = false;
