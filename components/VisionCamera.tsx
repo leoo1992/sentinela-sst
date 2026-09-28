@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { calculatePoseMetrics, inferLiftingPhase, isPoseNearRiskZone, namedPoint, primaryPose } from '@/lib/geometry';
 import { evaluateLocally } from '@/lib/localRules';
-import { inspectPpe } from '@/lib/ppe';
+import { inspectPpe, inspectPpeWithoutPose } from '@/lib/ppe';
 import type { EvaluationPayload, EvaluationResponse, Finding, ModuleId, PoseLike, PoseMetrics, PpeAssessment, PpeItem } from '@/lib/types';
 
 type FacingMode = 'user' | 'environment';
@@ -35,13 +35,28 @@ function severityLabel(severity: Finding['severity']) {
   if (severity === 'ok') return 'OK';
   return 'INFO';
 }
-function ppeLabel(ppe: PpeAssessment | null, moduleId: ModuleId) {
-  if (!ppe) return 'aguardando';
+function ppeValuesForModule(ppe: PpeAssessment, moduleId: ModuleId) {
   const keys: Array<keyof PpeAssessment> = moduleId === 'altura'
     ? ['capacete', 'cinturao', 'talabarte', 'travaQuedas']
     : ['capacete', 'oculos', 'colete', 'luvas', 'calcado'];
-  const values = keys.map((key) => ppe[key]);
-  return values.filter((item) => item.status === 'detectado').length + '/' + values.length;
+  return keys.map((key) => ppe[key]);
+}
+
+function ppeLabel(ppe: PpeAssessment | null, moduleId: ModuleId) {
+  if (!ppe) return 'aguardando';
+  const values = ppeValuesForModule(ppe, moduleId);
+  const detected = values.filter((item) => item.status === 'detectado').length;
+  return detected === 1 ? '1 detectado' : `${detected} detectados`;
+}
+
+function ppeSituation(ppe: PpeAssessment | null, moduleId: ModuleId) {
+  if (!ppe) return null;
+  const values = ppeValuesForModule(ppe, moduleId);
+  if (values.some((item) => item.status === 'nao_detectado')) return 'Alerta';
+  if (values.some((item) => item.status === 'incerto')) return 'Atenção';
+  if (values.every((item) => item.status === 'nao_avaliavel')) return 'Inconclusiva';
+  if (values.some((item) => item.status === 'nao_avaliavel')) return 'Parcial';
+  return 'Normal';
 }
 
 function ppeEntriesForModule(ppe: PpeAssessment, moduleId: ModuleId) {
@@ -189,6 +204,9 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
   const statusCards = useMemo(() => {
     const alertCount = findings.filter((item) => item.severity === 'alert').length;
     const attentionCount = findings.filter((item) => item.severity === 'attention').length;
+    const ppeState = moduleId === 'epi' || moduleId === 'altura'
+      ? ppeSituation(ppe, moduleId)
+      : null;
 
     return [
       { label: 'Pessoas', value: String(peopleCount) },
@@ -199,9 +217,11 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
             ? 'Alerta'
             : attentionCount > 0
               ? 'Atenção'
-              : running || imageUrl
-                ? 'Normal'
-                : 'Em espera',
+              : ppeState
+                ? ppeState
+                : running || imageUrl
+                  ? 'Normal'
+                  : 'Em espera',
       },
       { label: 'Alertas', value: String(alertCount + attentionCount) },
       {
@@ -283,6 +303,22 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     if (!canvas) return;
     if (canvas.width !== videoWidth) canvas.width = videoWidth;
     if (canvas.height !== videoHeight) canvas.height = videoHeight;
+
+    const stage = canvas.parentElement;
+    if (stage && videoWidth > 0 && videoHeight > 0) {
+      const scale = Math.min(
+        stage.clientWidth / videoWidth,
+        stage.clientHeight / videoHeight,
+      );
+      canvas.style.width = `${Math.max(1, Math.round(videoWidth * scale))}px`;
+      canvas.style.height = `${Math.max(1, Math.round(videoHeight * scale))}px`;
+      canvas.style.left = '50%';
+      canvas.style.top = '50%';
+      canvas.style.right = 'auto';
+      canvas.style.bottom = 'auto';
+      canvas.style.transform = 'translate(-50%, -50%)';
+    }
+
     const context = canvas.getContext('2d');
     if (!context) return;
     context.clearRect(0, 0, videoWidth, videoHeight);
@@ -502,7 +538,9 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
       let currentPpe: PpeAssessment | null = null;
       let personDetectedByServer = false;
       if (moduleId === 'epi' || moduleId === 'altura') {
-        const localPpe = primary ? inspectPpe(image, primary) : null;
+        const localPpe = primary
+          ? inspectPpe(image, primary)
+          : inspectPpeWithoutPose(image);
         const combined = await analyzePpeCombined(image, localPpe, primary);
         currentPpe = completePpeAssessment(localPpe, combined?.items ?? null);
         personDetectedByServer = Boolean(combined?.person_detected);
