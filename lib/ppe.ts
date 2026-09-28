@@ -73,6 +73,9 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
       colete: unavailable('Colete refletivo', 'Tronco insuficientemente visível.'),
       luvas: unavailable('Luvas', 'Mãos insuficientemente visíveis.'),
       calcado: unavailable('Calçado fechado', 'Pés insuficientemente visíveis.'),
+      cinturao: unavailable('Cinturão paraquedista', 'Tronco e cintura insuficientemente visíveis.'),
+      talabarte: unavailable('Talabarte', 'Sistema de conexão não está suficientemente visível.'),
+      travaQuedas: unavailable('Trava-quedas', 'Dispositivo e linha de ancoragem não estão suficientemente visíveis.'),
     };
   }
 
@@ -91,6 +94,9 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
       colete: unavailable('Colete refletivo', 'Canvas indisponível.'),
       luvas: unavailable('Luvas', 'Canvas indisponível.'),
       calcado: unavailable('Calçado fechado', 'Canvas indisponível.'),
+      cinturao: unavailable('Cinturão paraquedista', 'Análise visual indisponível.'),
+      talabarte: unavailable('Talabarte', 'Análise visual indisponível.'),
+      travaQuedas: unavailable('Trava-quedas', 'Análise visual indisponível.'),
     };
   }
 
@@ -180,5 +186,79 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
     else calcado = item('Calçado fechado', 'incerto', 0.4, 'Não é possível diferenciar calçado de segurança de calçado comum.');
   }
 
-  return { capacete, oculos, colete, luvas, calcado };
+  let cinturao = unavailable('Cinturão paraquedista', 'Tronco e cintura não estão suficientemente visíveis.');
+  if (leftShoulder && rightShoulder && leftHip && rightHip) {
+    const minX = Math.min(leftShoulder.x, rightShoulder.x, leftHip.x, rightHip.x);
+    const maxX = Math.max(leftShoulder.x, rightShoulder.x, leftHip.x, rightHip.x);
+    const minY = Math.min(leftShoulder.y, rightShoulder.y);
+    const maxY = Math.max(leftHip.y, rightHip.y);
+    const stats = statsForRegion(
+      context,
+      {
+        x: minX - bodyHeight * 0.04,
+        y: minY,
+        width: Math.max(10, maxX - minX + bodyHeight * 0.08),
+        height: Math.max(10, maxY - minY + bodyHeight * 0.06),
+      },
+      targetWidth,
+      targetHeight,
+    );
+    const dark = ratio(stats.dark, stats.count);
+    const saturated = ratio(stats.saturated, stats.count);
+
+    if (dark > 0.24 && saturated > 0.18) {
+      cinturao = item(
+        'Cinturão paraquedista',
+        'incerto',
+        0.58,
+        'Há elementos visuais compatíveis com tiras na região do tronco/cintura; confirme o cinturão e seus pontos de ajuste.',
+      );
+    } else {
+      cinturao = item(
+        'Cinturão paraquedista',
+        'nao_avaliavel',
+        0.25,
+        'Não há evidência visual suficiente para confirmar o cinturão com segurança.',
+      );
+    }
+  }
+
+  let talabarte = unavailable('Talabarte', 'O sistema de conexão não está visível com detalhe suficiente.');
+  if (leftHip && rightHip && (leftWrist || rightWrist)) {
+    const minX = Math.min(leftHip.x, rightHip.x, leftWrist?.x ?? leftHip.x, rightWrist?.x ?? rightHip.x);
+    const maxX = Math.max(leftHip.x, rightHip.x, leftWrist?.x ?? leftHip.x, rightWrist?.x ?? rightHip.x);
+    const minY = Math.min(leftHip.y, rightHip.y, leftWrist?.y ?? leftHip.y, rightWrist?.y ?? rightHip.y);
+    const maxY = Math.max(leftHip.y, rightHip.y, leftWrist?.y ?? leftHip.y, rightWrist?.y ?? rightHip.y);
+    const stats = statsForRegion(
+      context,
+      { x: minX, y: minY, width: Math.max(12, maxX - minX), height: Math.max(12, maxY - minY) },
+      targetWidth,
+      targetHeight,
+    );
+    const dark = ratio(stats.dark, stats.count);
+    const saturated = ratio(stats.saturated, stats.count);
+
+    talabarte = dark > 0.22 || saturated > 0.44
+      ? item(
+          'Talabarte',
+          'incerto',
+          0.5,
+          'Há elemento linear/contrastante próximo à cintura ou mãos; confirme visualmente se é o talabarte e se está conectado.',
+        )
+      : item(
+          'Talabarte',
+          'nao_avaliavel',
+          0.2,
+          'Não foi possível distinguir talabarte e conectores com segurança nesta imagem.',
+        );
+  }
+
+  const travaQuedas = item(
+    'Trava-quedas',
+    'nao_avaliavel',
+    0.15,
+    'O trava-quedas exige visualização nítida do dispositivo e de sua linha de ancoragem; confirme manualmente quando não estiver claramente visível.',
+  );
+
+  return { capacete, oculos, colete, luvas, calcado, cinturao, talabarte, travaQuedas };
 }
