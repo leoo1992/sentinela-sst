@@ -54,7 +54,7 @@ function ppeEntriesForModule(ppe: PpeAssessment, moduleId: ModuleId) {
 const PPE_LABELS: Record<keyof PpeAssessment, string> = {
   capacete: 'Capacete',
   oculos: 'Óculos de proteção',
-  colete: 'Colete refletivo',
+  colete: 'Colete/vestimenta refletiva',
   luvas: 'Luvas',
   calcado: 'Calçado fechado',
   cinturao: 'Cinturão paraquedista',
