@@ -70,7 +70,7 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
     return {
       capacete: unavailable('Capacete', 'Corpo insuficientemente visível.'),
       oculos: unavailable('Óculos de proteção', 'Face insuficientemente visível.'),
-      colete: unavailable('Colete refletivo', 'Tronco insuficientemente visível.'),
+      colete: unavailable('Colete/vestimenta refletiva', 'Tronco insuficientemente visível.'),
       luvas: unavailable('Luvas', 'Mãos insuficientemente visíveis.'),
       calcado: unavailable('Calçado fechado', 'Pés insuficientemente visíveis.'),
       cinturao: unavailable('Cinturão paraquedista', 'Tronco e cintura insuficientemente visíveis.'),
@@ -91,7 +91,7 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
     return {
       capacete: unavailable('Capacete', 'Canvas indisponível.'),
       oculos: unavailable('Óculos de proteção', 'Canvas indisponível.'),
-      colete: unavailable('Colete refletivo', 'Canvas indisponível.'),
+      colete: unavailable('Colete/vestimenta refletiva', 'Canvas indisponível.'),
       luvas: unavailable('Luvas', 'Canvas indisponível.'),
       calcado: unavailable('Calçado fechado', 'Canvas indisponível.'),
       cinturao: unavailable('Cinturão paraquedista', 'Análise visual indisponível.'),
@@ -129,7 +129,7 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
     else capacete = item('Capacete', 'nao_detectado', 0.64, 'Nenhum padrão de capacete de alta visibilidade foi identificado.');
   }
 
-  let colete = unavailable('Colete refletivo', 'Ombros/quadril não localizados.');
+  let colete = unavailable('Colete/vestimenta refletiva', 'Ombros/quadril não localizados.');
   if (leftShoulder && rightShoulder && leftHip && rightHip) {
     const minX = Math.min(leftShoulder.x, rightShoulder.x, leftHip.x, rightHip.x);
     const maxX = Math.max(leftShoulder.x, rightShoulder.x, leftHip.x, rightHip.x);
@@ -137,9 +137,9 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
     const maxY = Math.max(leftHip.y, rightHip.y);
     const stats = statsForRegion(context, { x: minX, y: minY, width: Math.max(8, maxX - minX), height: Math.max(8, maxY - minY) }, targetWidth, targetHeight);
     const high = ratio(stats.highVis, stats.count), sat = ratio(stats.saturated, stats.count);
-    if (high > 0.095) colete = item('Colete refletivo', 'detectado', Math.min(0.97, 0.65 + high * 1.8), 'Padrão de alta visibilidade detectado no tronco.');
-    else if (sat > 0.5) colete = item('Colete refletivo', 'incerto', 0.5, 'Roupa saturada no tronco; confirmar se é EPI.');
-    else colete = item('Colete refletivo', 'nao_detectado', 0.7, 'Colete de alta visibilidade não identificado.');
+    if (high > 0.095) colete = item('Colete/vestimenta refletiva', 'detectado', Math.min(0.97, 0.65 + high * 1.8), 'Padrão de alta visibilidade detectado no tronco.');
+    else if (sat > 0.5) colete = item('Colete/vestimenta refletiva', 'incerto', 0.5, 'Roupa saturada no tronco; confirmar se é EPI.');
+    else colete = item('Colete/vestimenta refletiva', 'nao_detectado', 0.7, 'Colete de alta visibilidade não identificado.');
   }
 
   let oculos = unavailable('Óculos de proteção', 'Olhos não localizados.');
