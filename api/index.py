@@ -80,7 +80,12 @@ def evaluate(request: EvaluationRequest) -> EvaluationResponse:
 
     if request.module == "epi":
         if request.ppe:
-            findings.extend(ppe_finding(key, value) for key, value in request.ppe.items())
+            epi_keys = ["capacete", "oculos", "colete", "luvas", "calcado"]
+            findings.extend(
+                ppe_finding(key, request.ppe[key])
+                for key in epi_keys
+                if request.ppe.get(key)
+            )
         else:
             findings.append(make_finding("ppe-waiting", "Preparando inspeção", "Mantenha cabeça, tronco, mãos e pés visíveis por alguns instantes.", "info"))
 
@@ -91,9 +96,20 @@ def evaluate(request: EvaluationRequest) -> EvaluationResponse:
             "A projeção do corpo alcançou a área virtual de borda configurada." if request.zone_risk else "A pessoa está fora da área virtual de borda configurada.",
             "alert" if request.zone_risk else "ok",
         ))
-        if request.ppe and request.ppe.get("capacete"):
-            findings.append(ppe_finding("capacete", request.ppe["capacete"]))
-        findings.append(make_finding("height-harness", "Cinturão e talabarte", "A confirmação de ancoragem exige inspeção visual específica e não é certificada por este protótipo.", "info"))
+        if request.ppe:
+            height_keys = ["capacete", "cinturao", "talabarte", "travaQuedas"]
+            findings.extend(
+                ppe_finding(key, request.ppe[key])
+                for key in height_keys
+                if request.ppe.get(key)
+            )
+        else:
+            findings.append(make_finding(
+                "height-ppe-waiting",
+                "Proteção contra quedas",
+                "Mantenha cabeça, tronco, cintura e sistema de conexão visíveis para avaliação.",
+                "info",
+            ))
 
     if request.module == "ergonomia":
         trunk = metrics.trunk_inclination
