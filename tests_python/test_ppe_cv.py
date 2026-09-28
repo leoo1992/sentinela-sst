@@ -3,7 +3,7 @@ import base64
 import cv2
 import numpy as np
 
-from api.index import GeminiImageRequest, analyze_ppe_image
+from api.index import PpeImageRequest, analyze_ppe_image
 
 
 def _synthetic_worker_image() -> str:
@@ -28,11 +28,9 @@ def _synthetic_worker_image() -> str:
     return base64.b64encode(encoded.tobytes()).decode("ascii")
 
 
-def test_opencv_detecta_capacete_e_vestimenta_sem_gemini(monkeypatch):
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-
+def test_opencv_detecta_capacete_vestimenta_e_luvas():
     response = analyze_ppe_image(
-        GeminiImageRequest(
+        PpeImageRequest(
             module="epi",
             image_base64=_synthetic_worker_image(),
             mime_type="image/jpeg",
@@ -40,7 +38,6 @@ def test_opencv_detecta_capacete_e_vestimenta_sem_gemini(monkeypatch):
     )
 
     assert response["engines"]["opencv"] is True
-    assert response["engines"]["gemini"] is False
     assert response["items"]["capacete"]["status"] == "detectado"
     assert response["items"]["colete"]["status"] == "detectado"
     assert response["items"]["luvas"]["status"] == "detectado"
