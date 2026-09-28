@@ -21,11 +21,9 @@ type CombinedResponse = {
   engines?: {
     tensorflow?: boolean;
     opencv?: boolean;
-    gemini?: boolean;
   };
   diagnostics?: {
     opencv_error?: string | null;
-    gemini_error?: string | null;
   };
 };
 
@@ -375,7 +373,7 @@ export default function VisionCamera() {
         personDetected = personDetected || Boolean(remote.person_detected);
 
         const engines = remote.engines;
-        const remoteWorked = Boolean(engines?.opencv || engines?.gemini);
+        const remoteWorked = Boolean(engines?.opencv);
         setAnalysisNote(
           remoteWorked
             ? 'Imagem analisada. Confira abaixo os EPIs identificados e os itens não avaliáveis.'
