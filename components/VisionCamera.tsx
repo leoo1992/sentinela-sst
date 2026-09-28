@@ -292,33 +292,56 @@ export default function VisionCamera() {
     pose: PoseLike | null,
   ) => {
     const prepared = imageForAnalysis(image);
-
-    const response = await fetch('/api/analyze-ppe-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        module: 'epi',
-        image_base64: prepared.imageBase64,
-        mime_type: prepared.mimeType,
-        local_ppe: localPpe,
-        pose_keypoints: normalizedPoseKeypoints(
-          pose,
-          image.naturalWidth,
-          image.naturalHeight,
-        ),
-      }),
+    const body = JSON.stringify({
+      module: 'epi',
+      image_base64: prepared.imageBase64,
+      mime_type: prepared.mimeType,
+      local_ppe: localPpe,
+      pose_keypoints: normalizedPoseKeypoints(
+        pose,
+        image.naturalWidth,
+        image.naturalHeight,
+      ),
     });
 
-    if (!response.ok) {
-      throw new Error(`Falha na análise de EPI (${response.status}).`);
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 45000);
+
+      try {
+        const response = await fetch('/api/analyze-ppe-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Falha na análise de EPI (${response.status}).`);
+        }
+
+        const data = (await response.json()) as CombinedResponse;
+        if (!data.items || Object.keys(data.items).length === 0) {
+          throw new Error('A análise de EPI retornou um resultado vazio.');
+        }
+
+        return data;
+      } catch (requestError) {
+        lastError = requestError instanceof Error
+          ? requestError
+          : new Error('Falha na análise complementar.');
+
+        if (attempt === 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, 500));
+        }
+      } finally {
+        window.clearTimeout(timeout);
+      }
     }
 
-    const data = (await response.json()) as CombinedResponse;
-    if (!data.items || Object.keys(data.items).length === 0) {
-      throw new Error('A análise de EPI retornou um resultado vazio.');
-    }
-
-    return data;
+    throw lastError ?? new Error('Falha na análise complementar.');
   }, []);
 
   const analyzeImage = useCallback(async (image: HTMLImageElement) => {
