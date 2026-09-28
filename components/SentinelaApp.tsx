@@ -6,7 +6,7 @@ import type { ModuleId } from '@/lib/types';
 
 const modules: Array<{ id: ModuleId; label: string; eyebrow: string; description: string }> = [
   { id: 'epi', label: 'Inspeção de EPI', eyebrow: 'EPI', description: 'Verifique visualmente os principais equipamentos de proteção do trabalhador.' },
-  { id: 'altura', label: 'Segurança em Altura', eyebrow: 'ALTURA', description: 'Acompanhe a aproximação do trabalhador de uma área de risco e a presença de capacete.' },
+  { id: 'altura', label: 'Segurança em Altura', eyebrow: 'ALTURA', description: 'Verifique zona de risco, capacete, cinturão paraquedista, talabarte e trava-quedas.' },
   { id: 'ergonomia', label: 'Análise Ergonômica', eyebrow: 'ERGO', description: 'Observe postura, inclinação do tronco, pescoço, joelhos e possíveis assimetrias.' },
   { id: 'cargas', label: 'Levantamento de Cargas', eyebrow: 'CARGAS', description: 'Acompanhe a postura durante o levantamento e identifique movimentos que exigem atenção.' },
 ];
