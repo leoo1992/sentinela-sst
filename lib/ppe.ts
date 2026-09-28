@@ -262,3 +262,95 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
 
   return { capacete, oculos, colete, luvas, calcado, cinturao, talabarte, travaQuedas };
 }
+
+
+export function inspectPpeWithoutPose(source: HTMLImageElement): PpeAssessment {
+  const sourceWidth = source.naturalWidth;
+  const sourceHeight = source.naturalHeight;
+  const unavailable = (label: string, note: string) => item(label, 'nao_avaliavel', 0, note);
+
+  const fallback: PpeAssessment = {
+    capacete: unavailable('Capacete', 'Cabeça não localizada pelo detector corporal.'),
+    oculos: unavailable('Óculos de proteção', 'Região dos olhos sem referência corporal confiável.'),
+    colete: unavailable('Colete/vestimenta refletiva', 'Tronco sem referência corporal confiável.'),
+    luvas: unavailable('Luvas', 'Mãos sem referência corporal confiável.'),
+    calcado: unavailable('Calçado fechado', 'Pés sem referência corporal confiável.'),
+    cinturao: unavailable('Cinturão paraquedista', 'Cintura sem referência corporal confiável.'),
+    talabarte: unavailable('Talabarte', 'Sistema de conexão sem referência corporal confiável.'),
+    travaQuedas: unavailable('Trava-quedas', 'Dispositivo sem referência corporal confiável.'),
+  };
+
+  if (sourceWidth <= 0 || sourceHeight <= 0) return fallback;
+
+  const targetWidth = 360;
+  const scale = targetWidth / sourceWidth;
+  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return fallback;
+
+  context.drawImage(source, 0, 0, targetWidth, targetHeight);
+
+  const headStats = statsForRegion(
+    context,
+    {
+      x: targetWidth * 0.18,
+      y: 0,
+      width: targetWidth * 0.64,
+      height: targetHeight * 0.34,
+    },
+    targetWidth,
+    targetHeight,
+  );
+  const torsoStats = statsForRegion(
+    context,
+    {
+      x: targetWidth * 0.08,
+      y: targetHeight * 0.28,
+      width: targetWidth * 0.84,
+      height: targetHeight * 0.55,
+    },
+    targetWidth,
+    targetHeight,
+  );
+
+  const headHigh = ratio(headStats.highVis, headStats.count);
+  const headSat = ratio(headStats.saturated, headStats.count);
+  if (headHigh > 0.055) {
+    fallback.capacete = item(
+      'Capacete',
+      'detectado',
+      Math.min(0.82, 0.58 + headHigh * 1.8),
+      'Objeto de alta visibilidade identificado na região superior da pessoa.',
+    );
+  } else if (headSat > 0.3) {
+    fallback.capacete = item(
+      'Capacete',
+      'incerto',
+      0.42,
+      'Há cor/objeto destacado na região superior; confirmar capacete visualmente.',
+    );
+  }
+
+  const torsoHigh = ratio(torsoStats.highVis, torsoStats.count);
+  const torsoSat = ratio(torsoStats.saturated, torsoStats.count);
+  if (torsoHigh > 0.085) {
+    fallback.colete = item(
+      'Colete/vestimenta refletiva',
+      'detectado',
+      Math.min(0.82, 0.58 + torsoHigh * 1.4),
+      'Vestimenta de alta visibilidade identificada no tronco.',
+    );
+  } else if (torsoSat > 0.42) {
+    fallback.colete = item(
+      'Colete/vestimenta refletiva',
+      'incerto',
+      0.42,
+      'Vestimenta colorida no tronco; confirmar característica refletiva.',
+    );
+  }
+
+  return fallback;
+}
