@@ -5,10 +5,10 @@ import VisionCamera from './VisionCamera';
 import type { ModuleId } from '@/lib/types';
 
 const modules: Array<{ id: ModuleId; label: string; eyebrow: string; description: string }> = [
-  { id: 'epi', label: 'Inspeção de EPI', eyebrow: 'EPI', description: 'Checklist visual experimental de capacete, óculos, colete, luvas e calçado.' },
-  { id: 'altura', label: 'Segurança em Altura', eyebrow: 'ALTURA', description: 'Pessoa, capacete e proximidade com uma zona virtual de borda.' },
-  { id: 'ergonomia', label: 'Análise Ergonômica', eyebrow: 'ERGO', description: 'Pose, ângulos corporais, inclinação de tronco, pescoço e assimetrias.' },
-  { id: 'cargas', label: 'Levantamento de Cargas', eyebrow: 'CARGAS', description: 'Fase do movimento, flexão de tronco, joelhos e assimetria corporal.' },
+  { id: 'epi', label: 'Inspeção de EPI', eyebrow: 'EPI', description: 'Verifique visualmente os principais equipamentos de proteção do trabalhador.' },
+  { id: 'altura', label: 'Segurança em Altura', eyebrow: 'ALTURA', description: 'Acompanhe a aproximação do trabalhador de uma área de risco e a presença de capacete.' },
+  { id: 'ergonomia', label: 'Análise Ergonômica', eyebrow: 'ERGO', description: 'Observe postura, inclinação do tronco, pescoço, joelhos e possíveis assimetrias.' },
+  { id: 'cargas', label: 'Levantamento de Cargas', eyebrow: 'CARGAS', description: 'Acompanhe a postura durante o levantamento e identifique movimentos que exigem atenção.' },
 ];
 
 export default function SentinelaApp() {
@@ -20,7 +20,7 @@ export default function SentinelaApp() {
       <header className="topbar">
         <div className="brand">
           <span className="brandShield" aria-hidden="true"><span className="brandCheck">✓</span></span>
-          <div><p className="brandKicker">VISÃO COMPUTACIONAL • SST</p><h1>Sentinela SST</h1></div>
+          <div><p className="brandKicker">MONITORAMENTO PREVENTIVO • SST</p><h1>Sentinela SST</h1></div>
         </div>
         <div className="privacyPill"><span className="privacyDot" />câmera local • sem armazenamento</div>
       </header>
@@ -30,9 +30,6 @@ export default function SentinelaApp() {
           <p className="sectionKicker">MÓDULO ATIVO</p>
           <h2>{active.label}</h2>
           <p>{active.description}</p>
-        </div>
-        <div className="stackPills" aria-label="Tecnologias">
-          <span>Next.js</span><span>Python</span><span>FastAPI</span><span>TensorFlow.js</span><span>MoveNet</span>
         </div>
       </section>
 
