@@ -35,10 +35,20 @@ function severityLabel(severity: Finding['severity']) {
   if (severity === 'ok') return 'OK';
   return 'INFO';
 }
-function ppeLabel(ppe: PpeAssessment | null) {
+function ppeLabel(ppe: PpeAssessment | null, moduleId: ModuleId) {
   if (!ppe) return 'aguardando';
-  const values = Object.values(ppe);
+  const keys: Array<keyof PpeAssessment> = moduleId === 'altura'
+    ? ['capacete', 'cinturao', 'talabarte', 'travaQuedas']
+    : ['capacete', 'oculos', 'colete', 'luvas', 'calcado'];
+  const values = keys.map((key) => ppe[key]);
   return values.filter((item) => item.status === 'detectado').length + '/' + values.length;
+}
+
+function ppeEntriesForModule(ppe: PpeAssessment, moduleId: ModuleId) {
+  const keys: Array<keyof PpeAssessment> = moduleId === 'altura'
+    ? ['capacete', 'cinturao', 'talabarte', 'travaQuedas']
+    : ['capacete', 'oculos', 'colete', 'luvas', 'calcado'];
+  return keys.map((key) => ppe[key]);
 }
 
 export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
@@ -96,8 +106,8 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
       },
       { label: 'Alertas', value: String(alertCount + attentionCount) },
       {
-        label: 'EPIs',
-        value: moduleId === 'epi' || moduleId === 'altura' ? ppeLabel(ppe) : '—',
+        label: moduleId === 'altura' ? 'Proteções' : 'EPIs',
+        value: moduleId === 'epi' || moduleId === 'altura' ? ppeLabel(ppe, moduleId) : '—',
       },
     ];
   }, [findings, imageUrl, moduleId, peopleCount, ppe, running]);
@@ -611,7 +621,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
 
         {(moduleId === 'epi' || moduleId === 'altura') && ppe && (
           <div className="ppeList">
-            {Object.values(ppe).map((entry) => (
+            {ppeEntriesForModule(ppe, moduleId).map((entry) => (
               <div key={entry.label} className={'ppeRow ' + entry.status}>
                 <span className="ppeState" aria-hidden="true" />
                 <div><strong>{entry.label}</strong><small>{entry.note}</small></div>
