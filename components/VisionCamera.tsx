@@ -76,64 +76,59 @@ function emptyPpeAssessment(): PpeAssessment {
   ) as unknown as PpeAssessment;
 }
 
-function mergePpeItem(local: PpeItem, gemini?: PpeItem): PpeItem {
-  if (!gemini) return local;
-
-  const aiItem: PpeItem = {
-    ...gemini,
-    note: gemini.note ? `Análise visual: ${gemini.note}` : undefined,
-  };
-
-  if (gemini.status === 'detectado' && gemini.confidence >= 0.52) return aiItem;
-
-  if (
-    local.status === 'detectado' &&
-    local.confidence >= 0.62 &&
-    gemini.status !== 'nao_detectado'
-  ) {
-    return local;
-  }
-
-  if (gemini.status === 'nao_detectado' && gemini.confidence >= 0.72) {
-    if (local.status === 'detectado' && local.confidence >= 0.68) {
-      return {
-        ...gemini,
-        status: 'incerto',
-        confidence: Math.max(local.confidence, gemini.confidence),
-        note: 'As análises visuais divergiram. Confirme o EPI presencialmente.',
-      };
-    }
-    return aiItem;
-  }
-
-  if (gemini.status === 'incerto') {
-    return local.status === 'detectado' && local.confidence >= 0.68 ? local : aiItem;
-  }
-
-  if (gemini.status === 'nao_avaliavel') {
-    return local.status === 'detectado' ? local : aiItem;
-  }
-
-  return aiItem;
-}
-
-function mergePpeAssessments(
+function completePpeAssessment(
   local: PpeAssessment | null,
-  gemini: Partial<PpeAssessment> | null,
+  combined: Partial<PpeAssessment> | null,
 ): PpeAssessment {
   const base = local ?? emptyPpeAssessment();
-  if (!gemini) return base;
+  if (!combined) return base;
 
   return Object.fromEntries(
     (Object.keys(PPE_LABELS) as Array<keyof PpeAssessment>).map((key) => [
       key,
-      mergePpeItem(base[key], gemini[key]),
+      combined[key] ?? base[key],
     ]),
   ) as unknown as PpeAssessment;
 }
 
-function imageForGemini(image: HTMLImageElement) {
-  const maxSide = 1280;
+function isPlausibleImagePose(metrics: PoseMetrics | null, width: number, height: number) {
+  const box = metrics?.bodyBox;
+  if (!box) return false;
+
+  const widthRatio = box.width / Math.max(1, width);
+  const heightRatio = box.height / Math.max(1, height);
+  const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
+
+  return (
+    widthRatio >= 0.08 &&
+    heightRatio >= 0.18 &&
+    centerX >= 0 &&
+    centerX <= width &&
+    centerY >= 0 &&
+    centerY <= height &&
+    (metrics?.visibility ?? 0) >= 25
+  );
+}
+
+function normalizedPoseKeypoints(pose: PoseLike | null, width: number, height: number) {
+  if (!pose) return null;
+  return Object.fromEntries(
+    pose.keypoints
+      .filter((point) => point.name)
+      .map((point) => [
+        point.name as string,
+        {
+          x: Math.max(0, Math.min(1, point.x / Math.max(1, width))),
+          y: Math.max(0, Math.min(1, point.y / Math.max(1, height))),
+          score: Math.max(0, Math.min(1, point.score ?? 0)),
+        },
+      ]),
+  );
+}
+
+function imageForAnalysis(image: HTMLImageElement) {
+  const maxSide = 1024;
   const largest = Math.max(image.naturalWidth, image.naturalHeight);
   const scale = largest > maxSide ? maxSide / largest : 1;
   const width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -161,6 +156,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<PoseDetectorLike | null>(null);
+  const imageDetectorRef = useRef<PoseDetectorLike | null>(null);
   const animationRef = useRef<number | null>(null);
   const runFrameRef = useRef<((timestamp: number) => void) | null>(null);
   const runningRef = useRef(false);
@@ -257,6 +253,26 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
       });
       detectorRef.current = detector as unknown as PoseDetectorLike;
       return detectorRef.current;
+    } finally {
+      setLoadingModel(false);
+    }
+  }, []);
+
+  const ensureImageDetector = useCallback(async () => {
+    if (imageDetectorRef.current) return imageDetectorRef.current;
+    setLoadingModel(true);
+    try {
+      const tf = await import('@tensorflow/tfjs-core');
+      await import('@tensorflow/tfjs-backend-webgl');
+      const poseDetection = await import('@tensorflow-models/pose-detection');
+      await tf.setBackend('webgl');
+      await tf.ready();
+      const detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, {
+        modelType: poseDetection.movenet.modelType.SINGLEPOSE_THUNDER,
+        enableSmoothing: true,
+      });
+      imageDetectorRef.current = detector as unknown as PoseDetectorLike;
+      return imageDetectorRef.current;
     } finally {
       setLoadingModel(false);
     }
@@ -359,11 +375,15 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     });
   }, []);
 
-  const analyzePpeWithGemini = useCallback(async (image: HTMLImageElement) => {
+  const analyzePpeCombined = useCallback(async (
+    image: HTMLImageElement,
+    localPpe: PpeAssessment | null,
+    pose: PoseLike | null,
+  ) => {
     if (moduleId !== 'epi' && moduleId !== 'altura') return null;
 
     try {
-      const prepared = imageForGemini(image);
+      const prepared = imageForAnalysis(image);
       const response = await fetch('/api/analyze-ppe-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -371,14 +391,23 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
           module: moduleId,
           image_base64: prepared.imageBase64,
           mime_type: prepared.mimeType,
+          local_ppe: localPpe,
+          pose_keypoints: normalizedPoseKeypoints(
+            pose,
+            image.naturalWidth,
+            image.naturalHeight,
+          ),
         }),
       });
 
-      if (!response.ok) return null;
-      const data = (await response.json()) as { items?: Partial<PpeAssessment> };
-      return data.items ?? null;
-    } catch (geminiError) {
-      console.warn('Análise complementar de EPI indisponível', geminiError);
+      if (!response.ok) throw new Error(`Análise combinada indisponível (${response.status})`);
+      return (await response.json()) as {
+        items?: Partial<PpeAssessment>;
+        person_detected?: boolean;
+        engines?: { tensorflow?: boolean; opencv?: boolean; gemini?: boolean };
+      };
+    } catch (combinedError) {
+      console.warn('Análise combinada de EPI indisponível', combinedError);
       return null;
     }
   }, [moduleId]);
@@ -455,22 +484,31 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     setSummary('Analisando a imagem selecionada…');
 
     try {
-      const detector = await ensureDetector();
+      const detector = await ensureImageDetector();
       if (!detector) throw new Error('Análise indisponível');
 
-      const poses = await detector.estimatePoses(image, { maxPoses: 6, flipHorizontal: false });
-      setPeopleCount(poses.length);
-
-      const primary = primaryPose(poses);
-      const currentMetrics = primary ? calculatePoseMetrics(primary) : null;
+      const estimated = await detector.estimatePoses(image, { maxPoses: 1, flipHorizontal: false });
+      const candidate = primaryPose(estimated);
+      const candidateMetrics = candidate ? calculatePoseMetrics(candidate) : null;
+      const primary = candidate && isPlausibleImagePose(
+        candidateMetrics,
+        image.naturalWidth,
+        image.naturalHeight,
+      ) ? candidate : null;
+      const poses = primary ? [primary] : [];
+      const currentMetrics = primary ? candidateMetrics : null;
       setMetrics(currentMetrics);
 
       let currentPpe: PpeAssessment | null = null;
+      let personDetectedByServer = false;
       if (moduleId === 'epi' || moduleId === 'altura') {
         const localPpe = primary ? inspectPpe(image, primary) : null;
-        const geminiPpe = await analyzePpeWithGemini(image);
-        currentPpe = mergePpeAssessments(localPpe, geminiPpe);
+        const combined = await analyzePpeCombined(image, localPpe, primary);
+        currentPpe = completePpeAssessment(localPpe, combined?.items ?? null);
+        personDetectedByServer = Boolean(combined?.person_detected);
       }
+
+      setPeopleCount(primary || personDetectedByServer ? 1 : 0);
       currentPpeRef.current = currentPpe;
       setPpe(currentPpe);
 
@@ -512,7 +550,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     } finally {
       setImageAnalyzing(false);
     }
-  }, [analyzePpeWithGemini, clearOverlay, drawOverlay, ensureDetector, moduleId, riskSide, riskWidth, sendToBackend]);
+  }, [analyzePpeCombined, clearOverlay, drawOverlay, ensureImageDetector, moduleId, riskSide, riskWidth, sendToBackend]);
 
   const handleImageSelection = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -642,6 +680,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     detectorRef.current?.dispose?.();
+    imageDetectorRef.current?.dispose?.();
     if (imageObjectUrlRef.current) URL.revokeObjectURL(imageObjectUrlRef.current);
   }, []);
 
