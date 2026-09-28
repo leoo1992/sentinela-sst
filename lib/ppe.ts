@@ -61,10 +61,12 @@ function pointRegion(point: Keypoint | null, bodyHeight: number, widthFactor: nu
   return { x: point.x - bodyHeight * widthFactor * 0.5, y: point.y - bodyHeight * heightFactor * 0.5, width: bodyHeight * widthFactor, height: bodyHeight * heightFactor };
 }
 
-export function inspectPpe(video: HTMLVideoElement, pose: PoseLike): PpeAssessment {
+export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: PoseLike): PpeAssessment {
   const box = bodyBox(pose);
+  const sourceWidth = 'videoWidth' in source ? source.videoWidth : source.naturalWidth;
+  const sourceHeight = 'videoHeight' in source ? source.videoHeight : source.naturalHeight;
   const unavailable = (label: string, note: string) => item(label, 'nao_avaliavel', 0, note);
-  if (!box || video.videoWidth <= 0 || video.videoHeight <= 0) {
+  if (!box || sourceWidth <= 0 || sourceHeight <= 0) {
     return {
       capacete: unavailable('Capacete', 'Corpo insuficientemente visível.'),
       oculos: unavailable('Óculos de proteção', 'Face insuficientemente visível.'),
@@ -75,8 +77,8 @@ export function inspectPpe(video: HTMLVideoElement, pose: PoseLike): PpeAssessme
   }
 
   const targetWidth = 360;
-  const scale = targetWidth / video.videoWidth;
-  const targetHeight = Math.max(1, Math.round(video.videoHeight * scale));
+  const scale = targetWidth / sourceWidth;
+  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
   const canvas = document.createElement('canvas');
   canvas.width = targetWidth;
   canvas.height = targetHeight;
@@ -92,7 +94,7 @@ export function inspectPpe(video: HTMLVideoElement, pose: PoseLike): PpeAssessme
     };
   }
 
-  context.drawImage(video, 0, 0, targetWidth, targetHeight);
+  context.drawImage(source, 0, 0, targetWidth, targetHeight);
 
   const mapPoint = (name: string): Keypoint | null => {
     const value = namedPoint(pose, name);
