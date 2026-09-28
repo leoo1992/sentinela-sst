@@ -162,6 +162,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<PoseDetectorLike | null>(null);
   const animationRef = useRef<number | null>(null);
+  const runFrameRef = useRef<((timestamp: number) => void) | null>(null);
   const runningRef = useRef(false);
   const lastInferenceRef = useRef(0);
   const lastPpeRef = useRef(0);
@@ -352,6 +353,12 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     }
   }, []);
 
+  const scheduleNextFrame = useCallback(() => {
+    animationRef.current = requestAnimationFrame((nextTimestamp) => {
+      runFrameRef.current?.(nextTimestamp);
+    });
+  }, []);
+
   const analyzePpeWithGemini = useCallback(async (image: HTMLImageElement) => {
     if (moduleId !== 'epi' && moduleId !== 'altura') return null;
 
@@ -380,11 +387,11 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     if (!runningRef.current) return;
     const video = videoRef.current, detector = detectorRef.current;
     if (!video || !detector || video.readyState < 2) {
-      animationRef.current = requestAnimationFrame(runFrame);
+      scheduleNextFrame();
       return;
     }
     if (timestamp - lastInferenceRef.current < 105) {
-      animationRef.current = requestAnimationFrame(runFrame);
+      scheduleNextFrame();
       return;
     }
     lastInferenceRef.current = timestamp;
@@ -437,8 +444,8 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
       console.error('Falha no frame de visão computacional', frameError);
     }
 
-    animationRef.current = requestAnimationFrame(runFrame);
-  }, [backendOnline, drawOverlay, moduleId, riskSide, riskWidth, sendToBackend]);
+    scheduleNextFrame();
+  }, [backendOnline, drawOverlay, moduleId, riskSide, riskWidth, scheduleNextFrame, sendToBackend]);
 
   const analyzeImage = useCallback(async (image: HTMLImageElement) => {
     if (!image.naturalWidth || !image.naturalHeight) return;
@@ -575,13 +582,13 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
       setBackendOnline(null);
       setSummary('Análise iniciada. Mantenha o corpo no enquadramento.');
       frameCounterRef.current = { count: 0, startedAt: performance.now() };
-      animationRef.current = requestAnimationFrame(runFrame);
+      scheduleNextFrame();
     } catch (cameraError) {
       console.error(cameraError);
       setError('Não foi possível iniciar a câmera. Verifique a permissão do navegador e tente novamente.');
       stopCamera();
     }
-  }, [clearImage, ensureDetector, facingMode, runFrame, stopCamera]);
+  }, [clearImage, ensureDetector, facingMode, scheduleNextFrame, stopCamera]);
 
   const switchCamera = useCallback(() => {
     setFacingMode((current) => current === 'environment' ? 'user' : 'environment');
@@ -589,41 +596,46 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
   }, [running, stopCamera]);
 
   useEffect(() => {
-    setFindings([]);
-    currentPpeRef.current = null;
-    setPpe(null);
-    setMetrics(null);
-    setZoneRisk(false);
-    setLiftingPhase(null);
+    const resetFrame = requestAnimationFrame(() => {
+      setFindings([]);
+      currentPpeRef.current = null;
+      setPpe(null);
+      setMetrics(null);
+      setZoneRisk(false);
+      setLiftingPhase(null);
 
-    if (imageUrl && imageRef.current?.complete) {
-      setSummary('Módulo alterado. Reanalisando a imagem…');
-      void analyzeImage(imageRef.current);
-      return;
-    }
+      if (imageUrl && imageRef.current?.complete) {
+        setSummary('Módulo alterado. Reanalisando a imagem…');
+        void analyzeImage(imageRef.current);
+        return;
+      }
 
-    setSummary(
-      running
-        ? 'Módulo alterado. Recalculando análise…'
-        : 'Ative a câmera ou selecione uma imagem para iniciar a análise.',
-    );
+      setSummary(
+        running
+          ? 'Módulo alterado. Recalculando análise…'
+          : 'Ative a câmera ou selecione uma imagem para iniciar a análise.',
+      );
+    });
+
+    return () => cancelAnimationFrame(resetFrame);
   }, [analyzeImage, imageUrl, moduleId, running]);
 
   useEffect(() => {
+    runFrameRef.current = runFrame;
     if (!runningRef.current) return;
 
     if (animationRef.current !== null) {
       cancelAnimationFrame(animationRef.current);
     }
 
-    animationRef.current = requestAnimationFrame(runFrame);
+    scheduleNextFrame();
 
     return () => {
       if (animationRef.current !== null) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [runFrame]);
+  }, [runFrame, scheduleNextFrame]);
 
   useEffect(() => () => {
     runningRef.current = false;
