@@ -7,8 +7,9 @@ import { inspectPpe } from '@/lib/ppe';
 import type { EvaluationPayload, EvaluationResponse, Finding, ModuleId, PoseLike, PoseMetrics, PpeAssessment } from '@/lib/types';
 
 type FacingMode = 'user' | 'environment';
+type VisionSource = HTMLVideoElement | HTMLImageElement;
 type PoseDetectorLike = {
-  estimatePoses: (input: HTMLVideoElement, config?: { maxPoses?: number; flipHorizontal?: boolean }) => Promise<PoseLike[]>;
+  estimatePoses: (input: VisionSource, config?: { maxPoses?: number; flipHorizontal?: boolean }) => Promise<PoseLike[]>;
   dispose?: () => void;
 };
 
@@ -42,6 +43,9 @@ function ppeLabel(ppe: PpeAssessment | null) {
 
 export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageObjectUrlRef = useRef<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<PoseDetectorLike | null>(null);
@@ -55,6 +59,9 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
   const frameCounterRef = useRef({ count: 0, startedAt: 0 });
 
   const [running, setRunning] = useState(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageName, setImageName] = useState<string | null>(null);
+  const [imageAnalyzing, setImageAnalyzing] = useState(false);
   const [loadingModel, setLoadingModel] = useState(false);
   const [facingMode, setFacingMode] = useState<FacingMode>('environment');
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +90,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
             ? 'Alerta'
             : attentionCount > 0
               ? 'Atenção'
-              : running
+              : running || imageUrl
                 ? 'Normal'
                 : 'Em espera',
       },
@@ -93,13 +100,22 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
         value: moduleId === 'epi' || moduleId === 'altura' ? ppeLabel(ppe) : '—',
       },
     ];
-  }, [findings, moduleId, peopleCount, ppe, running]);
+  }, [findings, imageUrl, moduleId, peopleCount, ppe, running]);
 
   const clearOverlay = useCallback(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
     if (canvas && context) context.clearRect(0, 0, canvas.width, canvas.height);
   }, []);
+
+  const clearImage = useCallback(() => {
+    if (imageObjectUrlRef.current) URL.revokeObjectURL(imageObjectUrlRef.current);
+    imageObjectUrlRef.current = null;
+    setImageUrl(null);
+    setImageName(null);
+    setImageAnalyzing(false);
+    clearOverlay();
+  }, [clearOverlay]);
 
   const stopCamera = useCallback(() => {
     runningRef.current = false;
@@ -288,6 +304,108 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     animationRef.current = requestAnimationFrame(runFrame);
   }, [backendOnline, drawOverlay, moduleId, riskSide, riskWidth, sendToBackend]);
 
+  const analyzeImage = useCallback(async (image: HTMLImageElement) => {
+    if (!image.naturalWidth || !image.naturalHeight) return;
+
+    setError(null);
+    setImageAnalyzing(true);
+    setSummary('Analisando a imagem selecionada…');
+
+    try {
+      const detector = await ensureDetector();
+      if (!detector) throw new Error('Análise indisponível');
+
+      const poses = await detector.estimatePoses(image, { maxPoses: 6, flipHorizontal: false });
+      setPeopleCount(poses.length);
+
+      const primary = primaryPose(poses);
+      const currentMetrics = primary ? calculatePoseMetrics(primary) : null;
+      setMetrics(currentMetrics);
+
+      let currentPpe: PpeAssessment | null = null;
+      if (primary && (moduleId === 'epi' || moduleId === 'altura')) {
+        currentPpe = inspectPpe(image, primary);
+      }
+      currentPpeRef.current = currentPpe;
+      setPpe(currentPpe);
+
+      const currentZoneRisk = moduleId === 'altura'
+        ? isPoseNearRiskZone(currentMetrics, image.naturalWidth, riskSide, riskWidth)
+        : false;
+      setZoneRisk(currentZoneRisk);
+
+      const currentLiftingPhase = moduleId === 'cargas' ? inferLiftingPhase(currentMetrics) : null;
+      setLiftingPhase(currentLiftingPhase);
+
+      drawOverlay(
+        poses,
+        currentMetrics,
+        currentZoneRisk,
+        image.naturalWidth,
+        image.naturalHeight,
+      );
+
+      const payload: EvaluationPayload = {
+        module: moduleId,
+        metrics: currentMetrics,
+        ppe: currentPpe,
+        zoneRisk: currentZoneRisk,
+        liftingPhase: currentLiftingPhase,
+      };
+
+      const local = evaluateLocally(payload);
+      setFindings(local.findings);
+      setSummary(local.summary);
+      setBackendOnline(null);
+      await sendToBackend(payload);
+    } catch (imageError) {
+      console.error('Falha ao analisar imagem', imageError);
+      setFindings([]);
+      setSummary('Não foi possível analisar esta imagem.');
+      setError('Não foi possível analisar a imagem. Tente outra foto com a pessoa inteira e boa iluminação.');
+      clearOverlay();
+    } finally {
+      setImageAnalyzing(false);
+    }
+  }, [clearOverlay, drawOverlay, ensureDetector, moduleId, riskSide, riskWidth, sendToBackend]);
+
+  const handleImageSelection = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Selecione um arquivo de imagem válido.');
+      return;
+    }
+
+    if (file.size > 12 * 1024 * 1024) {
+      setError('A imagem deve ter no máximo 12 MB.');
+      return;
+    }
+
+    stopCamera();
+    clearImage();
+    setFindings([]);
+    setMetrics(null);
+    setPpe(null);
+    setPeopleCount(0);
+    setZoneRisk(false);
+    setLiftingPhase(null);
+    setBackendOnline(null);
+    setError(null);
+
+    const objectUrl = URL.createObjectURL(file);
+    imageObjectUrlRef.current = objectUrl;
+    setImageUrl(objectUrl);
+    setImageName(file.name);
+    setSummary('Imagem carregada. Preparando análise…');
+  }, [clearImage, stopCamera]);
+
+  const handleImageLoad = useCallback(() => {
+    if (imageRef.current) void analyzeImage(imageRef.current);
+  }, [analyzeImage]);
+
   const startCamera = useCallback(async () => {
     setError(null);
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -295,6 +413,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
       return;
     }
     stopCamera();
+    clearImage();
     try {
       const detector = await ensureDetector();
       if (!detector) throw new Error('Modelo não carregado');
@@ -323,7 +442,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
       setError('Não foi possível iniciar a câmera. Verifique a permissão do navegador e tente novamente.');
       stopCamera();
     }
-  }, [ensureDetector, facingMode, runFrame, stopCamera]);
+  }, [clearImage, ensureDetector, facingMode, runFrame, stopCamera]);
 
   const switchCamera = useCallback(() => {
     setFacingMode((current) => current === 'environment' ? 'user' : 'environment');
@@ -332,9 +451,24 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
 
   useEffect(() => {
     setFindings([]);
-    setSummary(running ? 'Módulo alterado. Recalculando análise…' : 'Ative a câmera para iniciar a análise.');
-    currentPpeRef.current = null; setPpe(null); setMetrics(null); setZoneRisk(false); setLiftingPhase(null);
-  }, [moduleId, running]);
+    currentPpeRef.current = null;
+    setPpe(null);
+    setMetrics(null);
+    setZoneRisk(false);
+    setLiftingPhase(null);
+
+    if (imageUrl && imageRef.current?.complete) {
+      setSummary('Módulo alterado. Reanalisando a imagem…');
+      void analyzeImage(imageRef.current);
+      return;
+    }
+
+    setSummary(
+      running
+        ? 'Módulo alterado. Recalculando análise…'
+        : 'Ative a câmera ou selecione uma imagem para iniciar a análise.',
+    );
+  }, [analyzeImage, imageUrl, moduleId, running]);
 
   useEffect(() => {
     if (!runningRef.current) return;
@@ -357,18 +491,38 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     streamRef.current?.getTracks().forEach((track) => track.stop());
     detectorRef.current?.dispose?.();
+    if (imageObjectUrlRef.current) URL.revokeObjectURL(imageObjectUrlRef.current);
   }, []);
 
   return (
     <section className="visionGrid">
       <div className="cameraCard">
         <div className="cameraToolbar">
-          <div><p className="sectionKicker">CÂMERA AO VIVO</p><h3>{moduleTitles[moduleId]}</h3></div>
+          <div><p className="sectionKicker">ENTRADA PARA ANÁLISE</p><h3>{moduleTitles[moduleId]}</h3></div>
           <div className="cameraActions">
-            <button type="button" className="secondaryButton" onClick={switchCamera}>{facingMode === 'environment' ? 'Câmera traseira' : 'Câmera frontal'}</button>
-            {running
-              ? <button type="button" className="dangerButton" onClick={stopCamera}>Encerrar</button>
-              : <button type="button" className="primaryButton" onClick={startCamera} disabled={loadingModel}>{loadingModel ? 'Carregando IA…' : 'Ativar câmera'}</button>}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageSelection}
+              style={{ display: 'none' }}
+              aria-label="Selecionar imagem para análise"
+            />
+            <button type="button" className="secondaryButton" onClick={() => fileInputRef.current?.click()}>
+              Selecionar imagem
+            </button>
+            {running ? (
+              <>
+                <button type="button" className="secondaryButton" onClick={switchCamera}>
+                  {facingMode === 'environment' ? 'Câmera traseira' : 'Câmera frontal'}
+                </button>
+                <button type="button" className="dangerButton" onClick={stopCamera}>Encerrar</button>
+              </>
+            ) : (
+              <button type="button" className="primaryButton" onClick={startCamera} disabled={loadingModel}>
+                {loadingModel ? 'Preparando análise…' : imageUrl ? 'Usar câmera' : 'Ativar câmera'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -384,19 +538,40 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
           </div>
         )}
 
-        <div className={running ? 'cameraStage live' : 'cameraStage'}>
-          <video ref={videoRef} muted playsInline className="cameraVideo" />
+        <div className={running || imageUrl ? 'cameraStage live' : 'cameraStage'}>
+          <video ref={videoRef} muted playsInline className={imageUrl ? 'cameraVideo sourceHidden' : 'cameraVideo'} />
+          {imageUrl && (
+            <img
+              ref={imageRef}
+              src={imageUrl}
+              alt={imageName ? `Imagem selecionada: ${imageName}` : 'Imagem selecionada para análise'}
+              className="cameraImage"
+              onLoad={handleImageLoad}
+            />
+          )}
           <canvas ref={canvasRef} className="cameraOverlay" />
-          {!running && (
+          {!running && !imageUrl && (
             <div className="cameraEmpty">
               <div className="scannerIcon" aria-hidden="true"><span /></div>
-              <strong>Câmera desativada</strong>
-              <p>O processamento da imagem acontece no seu dispositivo. Nenhum frame é enviado ou armazenado pelo backend.</p>
-              <button type="button" className="primaryButton large" onClick={startCamera} disabled={loadingModel}>{loadingModel ? 'Preparando modelo…' : 'Abrir câmera'}</button>
+              <strong>Escolha como deseja analisar</strong>
+              <p>Use a câmera ao vivo ou selecione uma foto. A imagem é utilizada somente durante a análise e não fica armazenada.</p>
+              <div className="emptyActions">
+                <button type="button" className="primaryButton large" onClick={startCamera} disabled={loadingModel}>
+                  {loadingModel ? 'Preparando análise…' : 'Abrir câmera'}
+                </button>
+                <button type="button" className="secondaryButton large" onClick={() => fileInputRef.current?.click()}>
+                  Selecionar imagem
+                </button>
+              </div>
             </div>
           )}
           {running && <>
             <div className="liveBadge"><span />AO VIVO</div>
+            <div className="moduleBadge">{moduleTitles[moduleId]}</div>
+            {moduleId === 'altura' && <div className={zoneRisk ? 'riskBadge alert' : 'riskBadge'}>{zoneRisk ? 'ZONA DE RISCO' : 'ZONA MONITORADA'}</div>}
+          </>}
+          {!running && imageUrl && <>
+            <div className="imageBadge">{imageAnalyzing ? 'ANALISANDO IMAGEM' : 'IMAGEM ANALISADA'}</div>
             <div className="moduleBadge">{moduleTitles[moduleId]}</div>
             {moduleId === 'altura' && <div className={zoneRisk ? 'riskBadge alert' : 'riskBadge'}>{zoneRisk ? 'ZONA DE RISCO' : 'ZONA MONITORADA'}</div>}
           </>}
@@ -411,7 +586,10 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
       <aside className="inspectorCard">
         <div className="inspectorHeader">
           <div><p className="sectionKicker">ANÁLISE EM TEMPO REAL</p><h3>Leitura atual</h3></div>
-          <div className={running ? 'engineState online' : 'engineState'}><span />{running ? 'Análise ativa' : 'em espera'}</div>
+          <div className={running || imageUrl ? 'engineState online' : 'engineState'}>
+            <span />
+            {running ? 'Análise ativa' : imageAnalyzing ? 'Analisando imagem' : imageUrl ? 'Imagem analisada' : 'em espera'}
+          </div>
         </div>
 
         <div className="summaryBox">
@@ -445,13 +623,13 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
 
         <div className="findingsList" aria-live="polite">
           {findings.length === 0
-            ? <div className="emptyFinding"><span className="pulseRing" /><p>Aguardando dados da câmera.</p></div>
+            ? <div className="emptyFinding"><span className="pulseRing" /><p>{imageUrl ? 'Aguardando análise da imagem.' : 'Aguardando câmera ou imagem.'}</p></div>
             : findings.map((entry) => <article key={entry.code} className={'finding ' + entry.severity}><span className="findingTag">{severityLabel(entry.severity)}</span><strong>{entry.title}</strong><p>{entry.detail}</p></article>)}
         </div>
 
         <div className="privacyCard">
           <strong>Privacidade</strong>
-          <p>As imagens da câmera são usadas somente durante a análise e não ficam armazenadas. Ao encerrar a câmera, a sessão é finalizada.</p>
+          <p>Imagens da câmera e fotos selecionadas são usadas somente durante a análise e não ficam armazenadas.</p>
         </div>
       </aside>
     </section>
