@@ -227,16 +227,14 @@ def analyze_ppe_cv(
             "A cabeça não pôde ser localizada com confiança.",
         )
 
-    if torso["highvis"] >= 0.115 or (
-        torso["highvis"] >= 0.055 and torso["reflective"] >= 0.07
-    ):
+    if torso["highvis"] >= 0.18:
         colete = _item(
             "colete",
             "detectado",
             min(0.94, 0.68 + torso["highvis"] * 0.75 + torso["reflective"] * 0.25),
             "Vestimenta de alta visibilidade e/ou faixas refletivas foram identificadas no tronco.",
         )
-    elif torso["saturated"] >= 0.32:
+    elif torso["highvis"] >= 0.075 or torso["saturated"] >= 0.32:
         colete = _item(
             "colete",
             "incerto",
