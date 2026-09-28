@@ -166,7 +166,36 @@ def analyze_ppe_cv(
     height, width = image.shape[:2]
     face = _largest_face(image)
 
-    if face:
+    nose = _pose_point(pose_keypoints, "nose", width, height)
+    left_eye = _pose_point(pose_keypoints, "left_eye", width, height)
+    right_eye = _pose_point(pose_keypoints, "right_eye", width, height)
+    left_ear = _pose_point(pose_keypoints, "left_ear", width, height)
+    right_ear = _pose_point(pose_keypoints, "right_ear", width, height)
+    left_shoulder = _pose_point(pose_keypoints, "left_shoulder", width, height)
+    right_shoulder = _pose_point(pose_keypoints, "right_shoulder", width, height)
+    left_hip = _pose_point(pose_keypoints, "left_hip", width, height)
+    right_hip = _pose_point(pose_keypoints, "right_hip", width, height)
+
+    shoulder_width = None
+    if left_shoulder and right_shoulder:
+        shoulder_width = max(24.0, abs(right_shoulder[0] - left_shoulder[0]))
+
+    if nose and shoulder_width:
+        head_region = _clip(
+            image,
+            nose[0] - shoulder_width * 0.42,
+            nose[1] - shoulder_width * 0.78,
+            shoulder_width * 0.84,
+            shoulder_width * 0.74,
+        )
+        eye_region = _clip(
+            image,
+            nose[0] - shoulder_width * 0.30,
+            nose[1] - shoulder_width * 0.15,
+            shoulder_width * 0.60,
+            shoulder_width * 0.24,
+        )
+    elif face:
         x, y, face_w, face_h = face
         head_region = _clip(
             image,
@@ -182,6 +211,42 @@ def analyze_ppe_cv(
             0.94 * face_w,
             0.38 * face_h,
         )
+    else:
+        head_region = _clip(
+            image,
+            0.20 * width,
+            0.00 * height,
+            0.60 * width,
+            0.34 * height,
+        )
+        eye_region = _clip(
+            image,
+            0.24 * width,
+            0.12 * height,
+            0.52 * width,
+            0.18 * height,
+        )
+
+    if left_shoulder and right_shoulder:
+        torso_left = min(left_shoulder[0], right_shoulder[0])
+        torso_right = max(left_shoulder[0], right_shoulder[0])
+        torso_top = min(left_shoulder[1], right_shoulder[1])
+
+        if left_hip and right_hip:
+            torso_bottom = max(left_hip[1], right_hip[1])
+        else:
+            torso_bottom = torso_top + max(shoulder_width or 1.0, height * 0.28)
+
+        margin_x = max(12.0, (torso_right - torso_left) * 0.34)
+        torso_region = _clip(
+            image,
+            torso_left - margin_x,
+            torso_top,
+            (torso_right - torso_left) + margin_x * 2,
+            max(24.0, torso_bottom - torso_top),
+        )
+    elif face:
+        x, y, face_w, face_h = face
         torso_region = _clip(
             image,
             x - 0.90 * face_w,
@@ -190,9 +255,13 @@ def analyze_ppe_cv(
             2.85 * face_h,
         )
     else:
-        head_region = _clip(image, 0.25 * width, 0.02 * height, 0.50 * width, 0.30 * height)
-        eye_region = _clip(image, 0.28 * width, 0.12 * height, 0.44 * width, 0.17 * height)
-        torso_region = _clip(image, 0.15 * width, 0.30 * height, 0.70 * width, 0.55 * height)
+        torso_region = _clip(
+            image,
+            0.10 * width,
+            0.28 * height,
+            0.80 * width,
+            0.56 * height,
+        )
 
     head = _stats(head_region)
     eyes = _stats(eye_region)
@@ -212,7 +281,7 @@ def analyze_ppe_cv(
             0.58,
             "Há objeto claro sobre a cabeça; confirme visualmente se é capacete de segurança.",
         )
-    elif face:
+    elif face or nose:
         capacete = _item(
             "capacete",
             "nao_detectado",
@@ -249,14 +318,14 @@ def analyze_ppe_cv(
             "Não foi identificado padrão forte de vestimenta refletiva no tronco.",
         )
 
-    if face and eyes["edges"] >= 0.105 and eyes["dark"] >= 0.15:
+    if (face or left_eye or right_eye or nose) and eyes["edges"] >= 0.085 and eyes["dark"] >= 0.10:
         oculos = _item(
             "oculos",
             "incerto",
             0.62,
             "Há estrutura com contornos compatíveis com proteção ocular; a confirmação semântica fica a cargo da análise complementar.",
         )
-    elif face:
+    elif face or left_eye or right_eye or nose:
         oculos = _item(
             "oculos",
             "nao_avaliavel",
@@ -397,6 +466,6 @@ def analyze_ppe_cv(
 
     return {
         "items": {key: items[key] for key in requested},
-        "person_detected": bool(face or pose_keypoints),
+        "person_detected": bool(face or nose or left_shoulder or right_shoulder or pose_keypoints),
         "face_detected": bool(face),
     }
