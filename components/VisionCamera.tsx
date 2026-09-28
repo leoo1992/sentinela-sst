@@ -62,10 +62,9 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
   const [ppe, setPpe] = useState<PpeAssessment | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [summary, setSummary] = useState('Ative a câmera para iniciar a análise.');
-  const [fps, setFps] = useState(0);
+  const [, setFps] = useState(0);
   const [peopleCount, setPeopleCount] = useState(0);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
-  const [backendLatency, setBackendLatency] = useState<number | null>(null);
   const [riskSide, setRiskSide] = useState<'left' | 'right'>('right');
   const [riskWidth, setRiskWidth] = useState(24);
   const [zoneRisk, setZoneRisk] = useState(false);
