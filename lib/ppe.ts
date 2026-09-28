@@ -336,7 +336,7 @@ export function inspectPpeWithoutPose(source: HTMLImageElement): PpeAssessment {
 
   const torsoHigh = ratio(torsoStats.highVis, torsoStats.count);
   const torsoSat = ratio(torsoStats.saturated, torsoStats.count);
-  if (torsoHigh > 0.085) {
+  if (torsoHigh > 0.18) {
     fallback.colete = item(
       'Colete/vestimenta refletiva',
       'detectado',
