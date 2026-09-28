@@ -8,7 +8,7 @@ from typing import Dict, Literal, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from api.ppe_cv import analyze_ppe_cv
+from backend.ppe_cv import analyze_ppe_cv
 
 app = FastAPI(
     title="Sentinela SST API",
