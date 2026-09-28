@@ -1,57 +1,46 @@
 'use client';
 
-import { useState } from 'react';
 import VisionCamera from './VisionCamera';
-import type { ModuleId } from '@/lib/types';
-
-const modules: Array<{ id: ModuleId; label: string; eyebrow: string; description: string }> = [
-  { id: 'epi', label: 'Inspeção de EPI', eyebrow: 'EPI', description: 'Verifique visualmente os principais equipamentos de proteção do trabalhador.' },
-  { id: 'altura', label: 'Segurança em Altura', eyebrow: 'ALTURA', description: 'Verifique zona de risco, capacete, cinturão paraquedista, talabarte e trava-quedas.' },
-  { id: 'ergonomia', label: 'Análise Ergonômica', eyebrow: 'ERGO', description: 'Observe postura, inclinação do tronco, pescoço, joelhos e possíveis assimetrias.' },
-  { id: 'cargas', label: 'Levantamento de Cargas', eyebrow: 'CARGAS', description: 'Acompanhe a postura durante o levantamento e identifique movimentos que exigem atenção.' },
-];
 
 export default function SentinelaApp() {
-  const [moduleId, setModuleId] = useState<ModuleId>('epi');
-  const active = modules.find((module) => module.id === moduleId) ?? modules[0];
-
   return (
     <main className="appShell">
       <header className="topbar">
         <div className="brand">
-          <span className="brandShield" aria-hidden="true"><span className="brandCheck">✓</span></span>
-          <div><p className="brandKicker">MONITORAMENTO PREVENTIVO • SST</p><h1>Sentinela SST</h1></div>
+          <span className="brandShield" aria-hidden="true">
+            <span className="brandCheck">✓</span>
+          </span>
+          <div>
+            <p className="brandKicker">INSPEÇÃO VISUAL • SST</p>
+            <h1>Sentinela SST</h1>
+          </div>
         </div>
-        <div className="privacyPill"><span className="privacyDot" />câmera local • sem armazenamento</div>
+        <div className="privacyPill">
+          <span className="privacyDot" />
+          análise de EPI
+        </div>
       </header>
 
       <section className="heroIntro">
         <div>
-          <p className="sectionKicker">MÓDULO ATIVO</p>
-          <h2>{active.label}</h2>
-          <p>{active.description}</p>
+          <p className="sectionKicker">INSPEÇÃO DE EPI</p>
+          <h2>Identificação visual de equipamentos de proteção</h2>
+          <p>
+            Envie uma foto ou use a câmera para verificar capacete, óculos de proteção,
+            vestimenta refletiva, luvas e calçado.
+          </p>
         </div>
       </section>
 
-      <section className="modulePanel" aria-label="Seleção do módulo">
-        <label htmlFor="module-mobile" className="mobileSelectLabel">Selecione o módulo</label>
-        <select id="module-mobile" className="moduleSelectMobile" value={moduleId} onChange={(event) => setModuleId(event.target.value as ModuleId)}>
-          {modules.map((module) => <option key={module.id} value={module.id}>{module.label}</option>)}
-        </select>
-        <div className="moduleTabs">
-          {modules.map((module) => (
-            <button key={module.id} type="button" className={module.id === moduleId ? 'moduleTab active' : 'moduleTab'} onClick={() => setModuleId(module.id)} aria-pressed={module.id === moduleId}>
-              <span>{module.eyebrow}</span><strong>{module.label}</strong>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <VisionCamera moduleId={moduleId} />
+      <VisionCamera />
 
       <footer className="footerNote">
         <span>Sentinela SST</span>
-        <p>Ferramenta de apoio visual para atividades de Segurança do Trabalho. Os alertas auxiliam a observação e não substituem inspeções, avaliações formais ou procedimentos aplicáveis.</p>
+        <p>
+          Ferramenta de apoio visual para inspeções de Segurança do Trabalho.
+          O resultado deve ser confirmado pelo profissional responsável quando a imagem
+          estiver parcial, distante, desfocada ou com algum item oculto.
+        </p>
       </footer>
     </main>
   );
