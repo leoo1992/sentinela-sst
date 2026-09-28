@@ -51,7 +51,7 @@ export default function SentinelaApp() {
 
       <footer className="footerNote">
         <span>Sentinela SST</span>
-        <p>Protótipo educacional e de portfólio. Os indicadores visuais não substituem inspeção, laudo, análise ergonômica formal ou procedimentos de Segurança e Saúde no Trabalho.</p>
+        <p>Ferramenta de apoio visual para atividades de Segurança do Trabalho. Os alertas auxiliam a observação e não substituem inspeções, avaliações formais ou procedimentos aplicáveis.</p>
       </footer>
     </main>
   );
