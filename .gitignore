@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+coverage
+.env
+.env.local
+.vercel
+__pycache__
+.pytest_cache
+*.pyc
+.venv
+dist
+.DS_Store
