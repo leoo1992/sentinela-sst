@@ -20,8 +20,8 @@ def _synthetic_worker_image() -> str:
     cv2.rectangle(image, (90, 360), (420, 390), (220, 220, 220), -1)
 
     # Luvas marrons/tan na região central inferior.
-    cv2.rectangle(image, (145, 300), (250, 405), (55, 125, 180), -1)
-    cv2.rectangle(image, (265, 300), (370, 405), (55, 125, 180), -1)
+    cv2.rectangle(image, (145, 300), (250, 405), (20, 120, 160), -1)
+    cv2.rectangle(image, (265, 300), (370, 405), (20, 120, 160), -1)
 
     ok, encoded = cv2.imencode(".jpg", image)
     assert ok
