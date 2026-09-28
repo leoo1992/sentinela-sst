@@ -375,12 +375,23 @@ def analyze_ppe_cv(
     else:
         lower_center = _clip(image, 0.18 * width, 0.52 * height, 0.64 * width, 0.38 * height)
         lower_stats = _stats(lower_center)
-        if lower_stats["tan"] > 0.24 and lower_stats["saturated"] > 0.35:
+        if (
+            lower_stats["tan"] > 0.30
+            and lower_stats["skin"] < 0.28
+            and lower_stats["saturated"] > 0.40
+        ):
+            luvas = _item(
+                "luvas",
+                "detectado",
+                min(0.82, 0.58 + lower_stats["tan"] * 0.35),
+                "Material compatível com luvas foi identificado na região provável das mãos/braços.",
+            )
+        elif lower_stats["tan"] > 0.20 and lower_stats["saturated"] > 0.30:
             luvas = _item(
                 "luvas",
                 "incerto",
-                0.46,
-                "Há material compatível com luvas na região central inferior, mas faltam pontos confiáveis das mãos.",
+                0.44,
+                "Há material compatível com luvas, mas faltam pontos confiáveis das mãos.",
             )
         else:
             luvas = _item(
