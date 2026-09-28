@@ -246,7 +246,12 @@ def _fuse_ppe_item(key_name: str, local_raw, opencv_raw, gemini_raw) -> dict:
     for name, value in detected:
         threshold = 0.55 if name == "Gemini" else 0.68
         if name == "OpenCV":
-            threshold = 0.72 if key_name in {"capacete", "colete"} else 0.82
+            if key_name == "luvas":
+                threshold = 0.58
+            elif key_name in {"capacete", "colete"}:
+                threshold = 0.68
+            else:
+                threshold = 0.82
         if value["confidence"] >= threshold:
             strong_detected.append((name, value))
 
