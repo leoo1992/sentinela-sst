@@ -24,7 +24,8 @@ export function evaluateLocally(payload: EvaluationPayload): EvaluationResponse 
     if (!payload.ppe) {
       findings.push(finding('ppe-waiting', 'Preparando inspeção', 'Mantenha cabeça, tronco, mãos e pés visíveis por alguns instantes.', 'info'));
     } else {
-      (Object.keys(payload.ppe) as Array<keyof PpeAssessment>).forEach((key) => findings.push(statusFinding(key, payload.ppe![key])));
+      const epiKeys: Array<keyof PpeAssessment> = ['capacete', 'oculos', 'colete', 'luvas', 'calcado'];
+      epiKeys.forEach((key) => findings.push(statusFinding(key, payload.ppe![key])));
     }
   }
 
@@ -32,8 +33,12 @@ export function evaluateLocally(payload: EvaluationPayload): EvaluationResponse 
     findings.push(payload.zoneRisk
       ? finding('height-zone', 'Pessoa dentro da zona de risco', 'A projeção do corpo alcançou a área virtual de borda configurada.', 'alert')
       : finding('height-zone-ok', 'Fora da zona de risco', 'A pessoa está fora da área virtual de borda configurada.', 'ok'));
-    if (payload.ppe?.capacete) findings.push(statusFinding('capacete', payload.ppe.capacete));
-    findings.push(finding('height-harness', 'Cinturão e talabarte', 'A confirmação de ancoragem exige inspeção visual específica e não é certificada por este protótipo.', 'info'));
+    if (payload.ppe) {
+      const heightKeys: Array<keyof PpeAssessment> = ['capacete', 'cinturao', 'talabarte', 'travaQuedas'];
+      heightKeys.forEach((key) => findings.push(statusFinding(key, payload.ppe![key])));
+    } else {
+      findings.push(finding('height-ppe-waiting', 'Proteção contra quedas', 'Mantenha cabeça, tronco, cintura e sistema de conexão visíveis para avaliação.', 'info'));
+    }
   }
 
   if (payload.module === 'ergonomia') {
