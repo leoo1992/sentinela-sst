@@ -28,7 +28,7 @@ A aplicação foi desenhada para **não armazenar vídeo, imagem ou histórico**
 
 ## Stack
 
-Next.js 16, React 19, TypeScript, TensorFlow.js, MoveNet MultiPose, Python 3.12, FastAPI, Vitest, Pytest, GitHub Actions e Vercel.
+Next.js 16, React 19, TypeScript, TensorFlow.js, MoveNet SinglePose, Python 3.12, FastAPI, OpenCV, Gemini, Vitest, Pytest, GitHub Actions e Vercel.
 
 ## Executar
 
