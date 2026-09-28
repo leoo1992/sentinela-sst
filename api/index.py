@@ -56,7 +56,7 @@ class PosePoint(BaseModel):
     score: float = Field(default=0, ge=0, le=1)
 
 class GeminiImageRequest(BaseModel):
-    module: Literal["epi", "altura"]
+    module: Literal["epi"] = "epi"
     image_base64: str = Field(min_length=100, max_length=6_000_000)
     mime_type: Literal["image/jpeg", "image/png", "image/webp"] = "image/jpeg"
     local_ppe: Optional[Dict[str, PpeItem]] = None
@@ -414,11 +414,7 @@ Retorne notas curtas em português.
 
 @app.post("/api/analyze-ppe-image")
 def analyze_ppe_image(request: GeminiImageRequest):
-    keys = (
-        ["capacete", "cinturao", "talabarte", "travaQuedas"]
-        if request.module == "altura"
-        else ["capacete", "oculos", "colete", "luvas", "calcado"]
-    )
+    keys = ["capacete", "oculos", "colete", "luvas", "calcado"]
 
     pose = (
         {name: point.model_dump() for name, point in request.pose_keypoints.items()}
@@ -483,12 +479,7 @@ def health():
 
 @app.get("/api/modules")
 def modules():
-    return [
-        {"id": "epi", "name": "Inspeção de EPI"},
-        {"id": "altura", "name": "Segurança em Altura"},
-        {"id": "ergonomia", "name": "Análise Ergonômica"},
-        {"id": "cargas", "name": "Levantamento de Cargas"},
-    ]
+    return [{"id": "epi", "name": "Inspeção de EPI"}]
 
 @app.post("/api/evaluate", response_model=EvaluationResponse)
 def evaluate_route(request: EvaluationRequest):
