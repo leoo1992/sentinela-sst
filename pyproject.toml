@@ -5,7 +5,9 @@ description = "Backend FastAPI do Sentinela SST."
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.141.1",
-  "pydantic>=2.10.0"
+  "pydantic>=2.10.0",
+  "numpy>=2.2,<3",
+  "opencv-python-headless>=4.13.0.92,<5.1"
 ]
 
 [project.optional-dependencies]
