@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateLocally } from '@/lib/localRules';
+import { evaluateLocally } from '../lib/localRules';
 
 describe('local rules', () => {
   it('gera alerta para alta inclinação do tronco', () => {
