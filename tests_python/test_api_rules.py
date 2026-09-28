@@ -1,4 +1,4 @@
-from api.index import EvaluationRequest, PoseMetrics, evaluate
+from api.index import EvaluationRequest, PoseMetrics, PpeItem, evaluate
 
 def test_ergonomia_alerta_inclinacao_tronco():
     result = evaluate(EvaluationRequest(module="ergonomia", metrics=PoseMetrics(trunk_inclination=52, neck_inclination=10, visibility=95)))
@@ -16,19 +16,19 @@ def test_sem_pose_retorna_estado_aguardando():
 
 
 def test_epi_can_be_evaluated_without_pose():
-    payload = api.EvaluationRequest(
+    payload = EvaluationRequest(
         module="epi",
         metrics=None,
         ppe={
-            "capacete": api.PpeItem(label="Capacete", status="detectado", confidence=0.95),
-            "oculos": api.PpeItem(label="Óculos de proteção", status="detectado", confidence=0.9),
-            "colete": api.PpeItem(label="Colete refletivo", status="detectado", confidence=0.9),
-            "luvas": api.PpeItem(label="Luvas", status="detectado", confidence=0.85),
-            "calcado": api.PpeItem(label="Calçado fechado", status="nao_avaliavel", confidence=0.1),
+            "capacete": PpeItem(label="Capacete", status="detectado", confidence=0.95),
+            "oculos": PpeItem(label="Óculos de proteção", status="detectado", confidence=0.9),
+            "colete": PpeItem(label="Colete refletivo", status="detectado", confidence=0.9),
+            "luvas": PpeItem(label="Luvas", status="detectado", confidence=0.85),
+            "calcado": PpeItem(label="Calçado fechado", status="nao_avaliavel", confidence=0.1),
         },
         zone_risk=False,
         lifting_phase=None,
     )
-    result = api.evaluate(payload)
+    result = evaluate(payload)
     assert any(item.code == "epi-capacete-ok" for item in result.findings)
     assert any(item.code == "epi-oculos-ok" for item in result.findings)
