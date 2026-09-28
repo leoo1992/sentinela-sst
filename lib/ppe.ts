@@ -2,7 +2,7 @@ import { bodyBox, namedPoint } from './geometry';
 import type { DetectionStatus, Keypoint, PoseLike, PpeAssessment, PpeItem } from './types';
 
 interface Region { x: number; y: number; width: number; height: number; }
-interface SampleStats { highVis: number; dark: number; skin: number; saturated: number; count: number; }
+interface SampleStats { highVis: number; dark: number; skin: number; saturated: number; tan: number; count: number; }
 
 function item(label: string, status: DetectionStatus, confidence: number, note?: string): PpeItem {
   return { label, status, confidence: Math.max(0, Math.min(1, confidence)), note };
@@ -38,7 +38,7 @@ function isSkin(r: number, g: number, b: number) {
 function statsForRegion(context: CanvasRenderingContext2D, region: Region, canvasWidth: number, canvasHeight: number): SampleStats {
   const safe = clampRegion(region, canvasWidth, canvasHeight);
   const data = context.getImageData(Math.floor(safe.x), Math.floor(safe.y), Math.max(1, Math.floor(safe.width)), Math.max(1, Math.floor(safe.height))).data;
-  let highVis = 0, dark = 0, skin = 0, saturated = 0, count = 0;
+  let highVis = 0, dark = 0, skin = 0, saturated = 0, tan = 0, count = 0;
   for (let index = 0; index < data.length; index += 16) {
     const r = data[index], g = data[index + 1], b = data[index + 2];
     const hsv = rgbToHsv(r, g, b);
@@ -48,10 +48,11 @@ function statsForRegion(context: CanvasRenderingContext2D, region: Region, canva
     if (yellow || orange || lime) highVis += 1;
     if (hsv.v < 0.28) dark += 1;
     if (hsv.s > 0.38) saturated += 1;
+    if (hsv.h >= 12 && hsv.h <= 48 && hsv.s > 0.24 && hsv.v > 0.22 && hsv.v < 0.92) tan += 1;
     if (isSkin(r, g, b)) skin += 1;
     count += 1;
   }
-  return { highVis, dark, skin, saturated, count };
+  return { highVis, dark, skin, saturated, tan, count };
 }
 
 function ratio(value: number, total: number) { return total ? value / total : 0; }
@@ -137,7 +138,7 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
     const maxY = Math.max(leftHip.y, rightHip.y);
     const stats = statsForRegion(context, { x: minX, y: minY, width: Math.max(8, maxX - minX), height: Math.max(8, maxY - minY) }, targetWidth, targetHeight);
     const high = ratio(stats.highVis, stats.count), sat = ratio(stats.saturated, stats.count);
-    if (high > 0.095) colete = item('Colete/vestimenta refletiva', 'detectado', Math.min(0.97, 0.65 + high * 1.8), 'Padrão de alta visibilidade detectado no tronco.');
+    if (high > 0.18) colete = item('Colete/vestimenta refletiva', 'detectado', Math.min(0.97, 0.65 + high * 1.5), 'Padrão forte de alta visibilidade detectado no tronco.');
     else if (sat > 0.5) colete = item('Colete/vestimenta refletiva', 'incerto', 0.5, 'Roupa saturada no tronco; confirmar se é EPI.');
     else colete = item('Colete/vestimenta refletiva', 'nao_detectado', 0.7, 'Colete de alta visibilidade não identificado.');
   }
@@ -315,6 +316,17 @@ export function inspectPpeWithoutPose(source: HTMLImageElement): PpeAssessment {
     targetWidth,
     targetHeight,
   );
+  const handAreaStats = statsForRegion(
+    context,
+    {
+      x: targetWidth * 0.16,
+      y: targetHeight * 0.50,
+      width: targetWidth * 0.68,
+      height: targetHeight * 0.38,
+    },
+    targetWidth,
+    targetHeight,
+  );
 
   const headHigh = ratio(headStats.highVis, headStats.count);
   const headSat = ratio(headStats.saturated, headStats.count);
@@ -343,12 +355,24 @@ export function inspectPpeWithoutPose(source: HTMLImageElement): PpeAssessment {
       Math.min(0.82, 0.58 + torsoHigh * 1.4),
       'Vestimenta de alta visibilidade identificada no tronco.',
     );
-  } else if (torsoSat > 0.42) {
+  } else if (torsoHigh > 0.075 || torsoSat > 0.42) {
     fallback.colete = item(
       'Colete/vestimenta refletiva',
       'incerto',
       0.42,
-      'Vestimenta colorida no tronco; confirmar característica refletiva.',
+      'Há vestimenta colorida, mas a característica refletiva precisa de confirmação.',
+    );
+  }
+
+  const handTan = ratio(handAreaStats.tan, handAreaStats.count);
+  const handSkin = ratio(handAreaStats.skin, handAreaStats.count);
+  const handSat = ratio(handAreaStats.saturated, handAreaStats.count);
+  if (handTan > 0.30 && handSkin < 0.28 && handSat > 0.40) {
+    fallback.luvas = item(
+      'Luvas',
+      'detectado',
+      Math.min(0.78, 0.58 + handTan * 0.35),
+      'Material compatível com luvas identificado na região das mãos/braços.',
     );
   }
 
