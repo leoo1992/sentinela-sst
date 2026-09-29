@@ -229,9 +229,9 @@ function detectHearingProtection(regions: RegionStats[]): PpeItem {
   if (strongest > 0.76) {
     return item(
       'Protetor auricular',
-      'detectado',
-      Math.min(0.88, 0.56 + strongest * 0.22),
-      'Objeto/material compatível com plug ou abafador identificado na região de uma ou ambas as orelhas.',
+      'incerto',
+      Math.min(0.76, 0.52 + strongest * 0.16),
+      'Há forte indício visual na região das orelhas, mas a confirmação do EPI auditivo depende do detector treinado.',
     );
   }
 

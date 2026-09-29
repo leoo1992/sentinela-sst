@@ -1,0 +1,5 @@
+ultralytics>=8.4,<9
+onnx>=1.17,<2
+onnxslim>=0.1.49,<1
+sahi>=0.11.20,<1
+scikit-learn>=1.6,<2

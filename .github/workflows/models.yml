@@ -1,0 +1,33 @@
+name: PPE model assets
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/models.yml'
+      - 'training/export_sh17.py'
+
+permissions:
+  contents: write
+
+jobs:
+  export-models:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exporter
+        run: pip install 'ultralytics>=8.4,<9' 'onnx>=1.17,<2' 'onnxslim>=0.1.49,<1'
+      - name: Export SH17 weights to ONNX
+        run: python training/export_sh17.py --output models
+      - name: Create or update model release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view ppe-models-v1 >/dev/null 2>&1; then
+            gh release create ppe-models-v1 --title 'Sentinela SST PPE models' --notes 'ONNX assets generated from public SH17 benchmark weights.'
+          fi
+          gh release upload ppe-models-v1 models/*.onnx models/metadata.json --clobber

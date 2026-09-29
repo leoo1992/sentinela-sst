@@ -254,9 +254,9 @@ def _hearing_item(stats_list: list[dict[str, float]]) -> dict[str, Any]:
     if strongest >= 0.86:
         return _item(
             "protetorAuricular",
-            "detectado",
-            min(0.89, 0.56 + strongest * 0.18),
-            "Objeto/material compatível com protetor auricular plug ou abafador identificado na região da orelha.",
+            "incerto",
+            min(0.76, 0.52 + strongest * 0.16),
+            "Há forte indício visual na região da orelha, mas a confirmação de EPI auditivo exige o detector treinado.",
         )
 
     if strongest >= 0.64:

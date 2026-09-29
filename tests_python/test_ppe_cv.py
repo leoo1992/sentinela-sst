@@ -47,7 +47,7 @@ def _synthetic_worker_image() -> tuple[str, dict]:
     return base64.b64encode(encoded.tobytes()).decode("ascii"), pose
 
 
-def test_opencv_detecta_os_quatro_epis_independente_de_cor_tipo():
+def test_opencv_detecta_epis_visuais_e_mantem_audio_para_confirmacao_treinada():
     image_base64, pose = _synthetic_worker_image()
 
     response = analyze_ppe_image(
@@ -63,4 +63,4 @@ def test_opencv_detecta_os_quatro_epis_independente_de_cor_tipo():
     assert response["items"]["oculos"]["status"] == "detectado"
     assert response["items"]["capacete"]["status"] == "detectado"
     assert response["items"]["luvas"]["status"] == "detectado"
-    assert response["items"]["protetorAuricular"]["status"] == "detectado"
+    assert response["items"]["protetorAuricular"]["status"] in {"incerto", "nao_avaliavel"}

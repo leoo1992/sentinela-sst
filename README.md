@@ -1,63 +1,85 @@
 # Sentinela SST
 
-Aplicação full-stack de visão computacional em tempo real voltada a Segurança e Saúde no Trabalho. O projeto usa **Next.js + TypeScript** no frontend e **FastAPI + Python** no backend, com deploy unificado na Vercel.
+Aplicação full-stack de visão computacional para **inspeção visual de EPI**, com Next.js/TypeScript no frontend e FastAPI/Python no backend, mantendo deploy unificado na Vercel.
 
-## Escopo
+## EPIs avaliados
 
-O projeto está focado exclusivamente em **Inspeção de EPI**.
-
-Itens avaliados:
 - óculos, independentemente do tipo ou especificação;
 - capacete, independentemente do tipo, cor ou especificação;
 - luvas, independentemente do tipo ou material;
-- protetor auricular, incluindo plug e abafador/concha.
+- protetor auricular de segurança, incluindo plug e abafador/concha.
 
-Fotos enviadas passam por análise combinada entre TensorFlow/MoveNet, heurísticas locais e OpenCV no backend.
+**Fones de áudio comuns (headphones, headsets, earbuds/earphones) não são classes aceitas como EPI.** O detector treinado de proteção auditiva usa somente a classe industrial `ear-mufs` do SH17 e exige proximidade com a região das orelhas quando a pose está disponível.
 
-## Privacidade por arquitetura
+## Ensemble de visão computacional
 
-A aplicação foi desenhada para **não armazenar vídeo, imagem ou histórico**.
+Fotos enviadas usam várias fontes independentes de evidência:
 
-1. A câmera é aberta pelo navegador com getUserMedia.
-2. MoveNet/TensorFlow.js executa a estimativa de pose no dispositivo.
-3. O frontend extrai métricas derivadas como ângulos e estados visuais.
-4. FastAPI recebe as métricas derivadas e aplica regras.
-5. A câmera ao vivo continua processada localmente, sem envio de frames.
-6. Em fotos enviadas manualmente, uma versão reduzida é analisada pelo backend com OpenCV e o resultado é combinado com o TensorFlow/MoveNet do navegador. A aplicação não mantém histórico nem armazena a foto.
+1. MoveNet/TensorFlow.js localiza cabeça, olhos, orelhas e mãos;
+2. OpenCV executa análise geométrica/visual das regiões corporais;
+3. YOLOv8n treinado no SH17 roda em ONNX;
+4. YOLOv10n treinado no SH17 roda em ONNX;
+5. imagens grandes passam também por inferência fatiada para objetos pequenos;
+6. caixas dos dois detectores são combinadas por **Weighted Boxes Fusion**;
+7. a API calcula uma probabilidade final ponderada por EPI combinando ensemble treinado, OpenCV e análise local.
+
+O runtime usa **OpenCV DNN para ONNX**, evitando PyTorch dentro da função Vercel. Se os ONNX ainda não estiverem disponíveis, o sistema continua operando com MoveNet + OpenCV em fallback.
+
+## Modelos SH17
+
+O workflow `.github/workflows/models.yml` baixa os pesos benchmark públicos SH17 para YOLOv8n e YOLOv10n, exporta ambos para ONNX e publica os artefatos no release `ppe-models-v1` sem criar commit adicional.
+
+O SH17 possui classes `glasses`, `ear-mufs`, `gloves` e `helmet`, entre outras. Somente essas quatro classes relevantes são consumidas pelo Sentinela.
+
+## YOLO26 + RT-DETR
+
+A pasta `training/` inclui pipeline para treinar **YOLO26** e **RT-DETR** no mesmo dataset PPE e exportar ONNX. Eles só devem substituir os modelos atuais depois de fine-tuning e validação por classe; RT-DETR genérico COCO não possui as classes PPE necessárias.
+
+Para proteção auditiva, o conjunto de treino de próxima geração deve incluir:
+
+- abafadores/conchas como positivos;
+- plugs auriculares como positivos;
+- headphones/headsets/earbuds/earphones comuns como **imagens negativas**, sem anotação de EPI.
+
+## Privacidade
+
+A aplicação não mantém histórico de imagens. A câmera ao vivo usa MoveNet no navegador. Fotos enviadas são processadas durante a requisição e não são persistidas pela aplicação.
 
 ## Stack
 
-Next.js 16, React 19, TypeScript, TensorFlow.js, MoveNet SinglePose, Python 3.12, FastAPI, OpenCV, Vitest, Pytest, GitHub Actions e Vercel.
+Next.js 16, React 19, TypeScript, TensorFlow.js, MoveNet SinglePose, Python 3.12, FastAPI, OpenCV DNN, ONNX, Weighted Boxes Fusion, Vitest, Pytest, GitHub Actions e Vercel.
 
 ## Executar
 
-    npm install
-    npm run dev
+```bash
+npm install
+npm run dev
+```
 
-Para testar somente a API:
+API local:
 
-    python -m venv .venv
-    pip install -e ".[dev]"
-    uvicorn api.index:app --reload --port 8000
-
-Na Vercel, o arquivo api/index.py é empacotado como função Python e o Next.js permanece na raiz do mesmo projeto.
+```bash
+python -m venv .venv
+pip install -e ".[dev]"
+uvicorn api.index:app --reload --port 8000
+```
 
 ## Qualidade
 
-    npm run lint
-    npm run typecheck
-    npm run test
-    npm run build
-    pytest -q
-
-O workflow de CI executa essas verificações na branch **master**.
+```bash
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+PYTHONPATH=. pytest -q
+```
 
 ## Limitações
 
-Este é um protótipo técnico e de portfólio, não um sistema certificado para tomada de decisão de SST. Itens pequenos, ocultos, desfocados ou fora do enquadramento devem permanecer inconclusivos ou não avaliáveis.
+Este é um protótipo técnico/portfólio, não um sistema certificado de SST. Imagens desfocadas, oclusões, objetos muito pequenos e EPIs visualmente semelhantes a itens não-EPI podem exigir confirmação presencial.
 
-Os indicadores não substituem inspeção presencial, procedimentos aplicáveis ou profissional responsável pela atividade.
+O SH17 é disponibilizado pelos autores sob CC BY-NC-SA 4.0. Antes de uso comercial do modelo treinado nesses dados, revise as obrigações de licença ou treine modelos equivalentes com dataset compatível com o uso pretendido.
 
 ## Licença
 
-MIT.
+MIT para o código deste repositório; pesos/datasets externos mantêm suas próprias licenças.
