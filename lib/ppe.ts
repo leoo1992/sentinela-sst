@@ -1,11 +1,62 @@
 import { bodyBox, namedPoint } from './geometry';
 import type { DetectionStatus, Keypoint, PoseLike, PpeAssessment, PpeItem } from './types';
 
-interface Region { x: number; y: number; width: number; height: number; }
-interface SampleStats { highVis: number; dark: number; skin: number; saturated: number; tan: number; count: number; }
+interface Region {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface RegionStats {
+  skin: number;
+  dark: number;
+  saturated: number;
+  edge: number;
+  variance: number;
+}
 
 function item(label: string, status: DetectionStatus, confidence: number, note?: string): PpeItem {
   return { label, status, confidence: Math.max(0, Math.min(1, confidence)), note };
+}
+
+function unavailable(label: string, note: string) {
+  return item(label, 'nao_avaliavel', 0, note);
+}
+
+function emptyAssessment(): PpeAssessment {
+  return {
+    oculos: unavailable('Óculos', 'Região dos olhos não localizada.'),
+    capacete: unavailable('Capacete', 'Região da cabeça não localizada.'),
+    luvas: unavailable('Luvas', 'Região das mãos não localizada.'),
+    protetorAuricular: unavailable('Protetor auricular', 'Região das orelhas não localizada.'),
+  };
+}
+
+function rgbToHsv(r: number, g: number, b: number) {
+  const rp = r / 255;
+  const gp = g / 255;
+  const bp = b / 255;
+  const max = Math.max(rp, gp, bp);
+  const min = Math.min(rp, gp, bp);
+  const delta = max - min;
+  let h = 0;
+
+  if (delta) {
+    if (max === rp) h = ((gp - bp) / delta) % 6;
+    else if (max === gp) h = (bp - rp) / delta + 2;
+    else h = (rp - gp) / delta + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+
+  return { h, s: max === 0 ? 0 : delta / max, v: max };
+}
+
+function isSkin(r: number, g: number, b: number) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return r > 70 && g > 35 && b > 20 && max - min > 12 && r > g * 0.95 && r > b * 0.95;
 }
 
 function clampRegion(region: Region, width: number, height: number): Region {
@@ -13,93 +64,205 @@ function clampRegion(region: Region, width: number, height: number): Region {
   const y = Math.max(0, Math.min(height - 1, region.y));
   const right = Math.max(x + 1, Math.min(width, region.x + region.width));
   const bottom = Math.max(y + 1, Math.min(height, region.y + region.height));
-  return { x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) };
+  return { x, y, width: right - x, height: bottom - y };
 }
 
-function rgbToHsv(r: number, g: number, b: number) {
-  const rp = r / 255, gp = g / 255, bp = b / 255;
-  const max = Math.max(rp, gp, bp), min = Math.min(rp, gp, bp), delta = max - min;
-  let h = 0;
-  if (delta !== 0) {
-    if (max === rp) h = ((gp - bp) / delta) % 6;
-    else if (max === gp) h = (bp - rp) / delta + 2;
-    else h = (rp - gp) / delta + 4;
-    h *= 60;
-    if (h < 0) h += 360;
+function regionStats(
+  context: CanvasRenderingContext2D,
+  region: Region,
+  width: number,
+  height: number,
+): RegionStats {
+  const safe = clampRegion(region, width, height);
+  const w = Math.max(2, Math.floor(safe.width));
+  const h = Math.max(2, Math.floor(safe.height));
+  const image = context.getImageData(Math.floor(safe.x), Math.floor(safe.y), w, h);
+  const data = image.data;
+
+  let skin = 0;
+  let dark = 0;
+  let saturated = 0;
+  let count = 0;
+  let sum = 0;
+  let sumSq = 0;
+  let edges = 0;
+  let edgeChecks = 0;
+
+  const luminance = new Float32Array(w * h);
+
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const pixel = (y * w + x) * 4;
+      const r = data[pixel];
+      const g = data[pixel + 1];
+      const b = data[pixel + 2];
+      const hsv = rgbToHsv(r, g, b);
+      const luma = r * 0.299 + g * 0.587 + b * 0.114;
+
+      luminance[y * w + x] = luma;
+      if (isSkin(r, g, b)) skin += 1;
+      if (hsv.v < 0.30) dark += 1;
+      if (hsv.s > 0.30) saturated += 1;
+      sum += luma;
+      sumSq += luma * luma;
+      count += 1;
+    }
   }
-  return { h, s: max === 0 ? 0 : delta / max, v: max };
-}
 
-function isSkin(r: number, g: number, b: number) {
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  return r > 70 && g > 35 && b > 20 && max - min > 12 && Math.abs(r - g) > 8 && r > g && r > b;
-}
-
-function statsForRegion(context: CanvasRenderingContext2D, region: Region, canvasWidth: number, canvasHeight: number): SampleStats {
-  const safe = clampRegion(region, canvasWidth, canvasHeight);
-  const data = context.getImageData(Math.floor(safe.x), Math.floor(safe.y), Math.max(1, Math.floor(safe.width)), Math.max(1, Math.floor(safe.height))).data;
-  let highVis = 0, dark = 0, skin = 0, saturated = 0, tan = 0, count = 0;
-  for (let index = 0; index < data.length; index += 16) {
-    const r = data[index], g = data[index + 1], b = data[index + 2];
-    const hsv = rgbToHsv(r, g, b);
-    const yellow = hsv.h >= 40 && hsv.h <= 78 && hsv.s > 0.45 && hsv.v > 0.5;
-    const orange = hsv.h >= 8 && hsv.h <= 38 && hsv.s > 0.55 && hsv.v > 0.5;
-    const lime = hsv.h >= 79 && hsv.h <= 145 && hsv.s > 0.45 && hsv.v > 0.45;
-    if (yellow || orange || lime) highVis += 1;
-    if (hsv.v < 0.28) dark += 1;
-    if (hsv.s > 0.38) saturated += 1;
-    if (hsv.h >= 12 && hsv.h <= 48 && hsv.s > 0.24 && hsv.v > 0.22 && hsv.v < 0.92) tan += 1;
-    if (isSkin(r, g, b)) skin += 1;
-    count += 1;
+  for (let y = 1; y < h; y += 2) {
+    for (let x = 1; x < w; x += 2) {
+      const here = luminance[y * w + x];
+      const left = luminance[y * w + x - 1];
+      const top = luminance[(y - 1) * w + x];
+      if (Math.abs(here - left) > 34 || Math.abs(here - top) > 34) edges += 1;
+      edgeChecks += 1;
+    }
   }
-  return { highVis, dark, skin, saturated, tan, count };
+
+  const mean = count ? sum / count : 0;
+  const variance = count ? Math.max(0, sumSq / count - mean * mean) : 0;
+
+  return {
+    skin: count ? skin / count : 0,
+    dark: count ? dark / count : 0,
+    saturated: count ? saturated / count : 0,
+    edge: edgeChecks ? edges / edgeChecks : 0,
+    variance,
+  };
 }
 
-function ratio(value: number, total: number) { return total ? value / total : 0; }
-
-function pointRegion(point: Keypoint | null, bodyHeight: number, widthFactor: number, heightFactor: number): Region | null {
+function pointRegion(point: Keypoint | null, radius: number): Region | null {
   if (!point) return null;
-  return { x: point.x - bodyHeight * widthFactor * 0.5, y: point.y - bodyHeight * heightFactor * 0.5, width: bodyHeight * widthFactor, height: bodyHeight * heightFactor };
+  return {
+    x: point.x - radius,
+    y: point.y - radius,
+    width: radius * 2,
+    height: radius * 2,
+  };
+}
+
+function detectHelmet(stats: RegionStats): PpeItem {
+  const objectSignal =
+    stats.edge * 1.6 +
+    stats.saturated * 0.8 +
+    stats.dark * 0.45 +
+    Math.min(1, stats.variance / 1800) * 0.7;
+
+  if (stats.skin < 0.42 && objectSignal > 0.62) {
+    return item(
+      'Capacete',
+      'detectado',
+      Math.min(0.92, 0.58 + objectSignal * 0.22),
+      'Objeto consistente com capacete identificado na região da cabeça, sem exigir cor ou modelo específico.',
+    );
+  }
+
+  if (objectSignal > 0.42) {
+    return item('Capacete', 'incerto', 0.48, 'Há um objeto na região da cabeça, mas a confirmação é inconclusiva.');
+  }
+
+  return item('Capacete', 'nao_detectado', 0.56, 'Nenhum objeto consistente com capacete foi identificado na cabeça.');
+}
+
+function detectGlasses(stats: RegionStats): PpeItem {
+  const signal = stats.edge * 1.7 + stats.dark * 0.65 + Math.min(1, stats.variance / 1300) * 0.55;
+
+  if (signal > 0.72) {
+    return item(
+      'Óculos',
+      'detectado',
+      Math.min(0.88, 0.57 + signal * 0.20),
+      'Estrutura compatível com óculos identificada ao redor dos olhos, independentemente do tipo.',
+    );
+  }
+
+  if (signal > 0.52) {
+    return item('Óculos', 'incerto', 0.46, 'Há contornos na região dos olhos, mas a identificação não é conclusiva.');
+  }
+
+  return item('Óculos', 'nao_detectado', 0.54, 'Óculos não foram identificados na região dos olhos.');
+}
+
+function detectGloves(regions: RegionStats[]): PpeItem {
+  if (!regions.length) return unavailable('Luvas', 'Mãos não localizadas.');
+
+  const skin = regions.reduce((sum, value) => sum + value.skin, 0) / regions.length;
+  const material = regions.reduce(
+    (sum, value) =>
+      sum +
+      value.saturated * 0.65 +
+      value.dark * 0.45 +
+      value.edge * 0.75 +
+      Math.min(1, value.variance / 1600) * 0.45,
+    0,
+  ) / regions.length;
+
+  if (skin < 0.38 && material > 0.54) {
+    return item(
+      'Luvas',
+      'detectado',
+      Math.min(0.90, 0.58 + material * 0.20),
+      'Material diferente de pele identificado nas mãos, independentemente do tipo de luva.',
+    );
+  }
+
+  if (skin > 0.56) {
+    return item('Luvas', 'nao_detectado', 0.62, 'As mãos apresentam forte padrão de pele exposta.');
+  }
+
+  return item('Luvas', 'incerto', 0.44, 'As mãos estão visíveis, mas não foi possível confirmar luvas.');
+}
+
+function detectHearingProtection(regions: RegionStats[]): PpeItem {
+  if (!regions.length) return unavailable('Protetor auricular', 'Orelhas não localizadas.');
+
+  const signals = regions.map(
+    (value) =>
+      (1 - value.skin) * 0.45 +
+      value.saturated * 0.55 +
+      value.dark * 0.45 +
+      value.edge * 0.85 +
+      Math.min(1, value.variance / 1700) * 0.40,
+  );
+
+  const strongest = Math.max(...signals);
+  if (strongest > 0.76) {
+    return item(
+      'Protetor auricular',
+      'detectado',
+      Math.min(0.88, 0.56 + strongest * 0.22),
+      'Objeto/material compatível com plug ou abafador identificado na região de uma ou ambas as orelhas.',
+    );
+  }
+
+  if (strongest > 0.56) {
+    return item(
+      'Protetor auricular',
+      'incerto',
+      0.46,
+      'Há alteração visual na região das orelhas, mas não foi possível confirmar plug ou abafador.',
+    );
+  }
+
+  return item('Protetor auricular', 'nao_detectado', 0.55, 'Proteção auditiva não foi identificada na região das orelhas.');
 }
 
 export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: PoseLike): PpeAssessment {
+  const result = emptyAssessment();
   const box = bodyBox(pose);
   const sourceWidth = 'videoWidth' in source ? source.videoWidth : source.naturalWidth;
   const sourceHeight = 'videoHeight' in source ? source.videoHeight : source.naturalHeight;
-  const unavailable = (label: string, note: string) => item(label, 'nao_avaliavel', 0, note);
-  if (!box || sourceWidth <= 0 || sourceHeight <= 0) {
-    return {
-      capacete: unavailable('Capacete', 'Corpo insuficientemente visível.'),
-      oculos: unavailable('Óculos de proteção', 'Face insuficientemente visível.'),
-      colete: unavailable('Colete/vestimenta refletiva', 'Tronco insuficientemente visível.'),
-      luvas: unavailable('Luvas', 'Mãos insuficientemente visíveis.'),
-      calcado: unavailable('Calçado fechado', 'Pés insuficientemente visíveis.'),
-      cinturao: unavailable('Cinturão paraquedista', 'Tronco e cintura insuficientemente visíveis.'),
-      talabarte: unavailable('Talabarte', 'Sistema de conexão não está suficientemente visível.'),
-      travaQuedas: unavailable('Trava-quedas', 'Dispositivo e linha de ancoragem não estão suficientemente visíveis.'),
-    };
-  }
 
-  const targetWidth = 360;
+  if (!box || sourceWidth <= 0 || sourceHeight <= 0) return result;
+
+  const targetWidth = 420;
   const scale = targetWidth / sourceWidth;
   const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
   const canvas = document.createElement('canvas');
   canvas.width = targetWidth;
   canvas.height = targetHeight;
   const context = canvas.getContext('2d', { willReadFrequently: true });
-
-  if (!context) {
-    return {
-      capacete: unavailable('Capacete', 'Canvas indisponível.'),
-      oculos: unavailable('Óculos de proteção', 'Canvas indisponível.'),
-      colete: unavailable('Colete/vestimenta refletiva', 'Canvas indisponível.'),
-      luvas: unavailable('Luvas', 'Canvas indisponível.'),
-      calcado: unavailable('Calçado fechado', 'Canvas indisponível.'),
-      cinturao: unavailable('Cinturão paraquedista', 'Análise visual indisponível.'),
-      talabarte: unavailable('Talabarte', 'Análise visual indisponível.'),
-      travaQuedas: unavailable('Trava-quedas', 'Análise visual indisponível.'),
-    };
-  }
+  if (!context) return result;
 
   context.drawImage(source, 0, 0, targetWidth, targetHeight);
 
@@ -108,273 +271,99 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
     return value ? { ...value, x: value.x * scale, y: value.y * scale } : null;
   };
 
-  const bodyHeight = box.height * scale;
-  const leftShoulder = mapPoint('left_shoulder'), rightShoulder = mapPoint('right_shoulder');
-  const leftHip = mapPoint('left_hip'), rightHip = mapPoint('right_hip');
-  const nose = mapPoint('nose'), leftEye = mapPoint('left_eye'), rightEye = mapPoint('right_eye');
-  const leftWrist = mapPoint('left_wrist'), rightWrist = mapPoint('right_wrist');
-  const leftAnkle = mapPoint('left_ankle'), rightAnkle = mapPoint('right_ankle');
+  const bodyHeight = Math.max(80, box.height * scale);
+  const nose = mapPoint('nose');
+  const leftEye = mapPoint('left_eye');
+  const rightEye = mapPoint('right_eye');
+  const leftEar = mapPoint('left_ear');
+  const rightEar = mapPoint('right_ear');
+  const leftWrist = mapPoint('left_wrist');
+  const rightWrist = mapPoint('right_wrist');
 
-  const headCenter = nose ?? leftEye ?? rightEye;
-  let capacete = unavailable('Capacete', 'Cabeça não localizada.');
-  if (headCenter) {
-    const stats = statsForRegion(context, {
-      x: headCenter.x - bodyHeight * 0.11,
-      y: headCenter.y - bodyHeight * 0.18,
-      width: bodyHeight * 0.22,
-      height: bodyHeight * 0.16,
-    }, targetWidth, targetHeight);
-    const high = ratio(stats.highVis, stats.count), sat = ratio(stats.saturated, stats.count);
-    if (high > 0.085) capacete = item('Capacete', 'detectado', Math.min(0.95, 0.62 + high * 2.2), 'Cor de alta visibilidade na região da cabeça.');
-    else if (sat > 0.42) capacete = item('Capacete', 'incerto', 0.48, 'Objeto/cor na região da cabeça requer confirmação visual.');
-    else capacete = item('Capacete', 'nao_detectado', 0.64, 'Nenhum padrão de capacete de alta visibilidade foi identificado.');
-  }
-
-  let colete = unavailable('Colete/vestimenta refletiva', 'Ombros/quadril não localizados.');
-  if (leftShoulder && rightShoulder && leftHip && rightHip) {
-    const minX = Math.min(leftShoulder.x, rightShoulder.x, leftHip.x, rightHip.x);
-    const maxX = Math.max(leftShoulder.x, rightShoulder.x, leftHip.x, rightHip.x);
-    const minY = Math.min(leftShoulder.y, rightShoulder.y);
-    const maxY = Math.max(leftHip.y, rightHip.y);
-    const stats = statsForRegion(context, { x: minX, y: minY, width: Math.max(8, maxX - minX), height: Math.max(8, maxY - minY) }, targetWidth, targetHeight);
-    const high = ratio(stats.highVis, stats.count), sat = ratio(stats.saturated, stats.count);
-    if (high > 0.18) colete = item('Colete/vestimenta refletiva', 'detectado', Math.min(0.97, 0.65 + high * 1.5), 'Padrão forte de alta visibilidade detectado no tronco.');
-    else if (sat > 0.5) colete = item('Colete/vestimenta refletiva', 'incerto', 0.5, 'Roupa saturada no tronco; confirmar se é EPI.');
-    else colete = item('Colete/vestimenta refletiva', 'nao_detectado', 0.7, 'Colete de alta visibilidade não identificado.');
-  }
-
-  let oculos = unavailable('Óculos de proteção', 'Olhos não localizados.');
-  if (leftEye && rightEye) {
-    const minX = Math.min(leftEye.x, rightEye.x), maxX = Math.max(leftEye.x, rightEye.x);
-    const eyeDistance = Math.max(8, maxX - minX);
-    const stats = statsForRegion(context, {
-      x: minX - eyeDistance * 0.45,
-      y: Math.min(leftEye.y, rightEye.y) - eyeDistance * 0.45,
-      width: eyeDistance * 1.9,
-      height: eyeDistance * 0.9,
-    }, targetWidth, targetHeight);
-    const dark = ratio(stats.dark, stats.count);
-    oculos = dark > 0.34
-      ? item('Óculos de proteção', 'incerto', 0.54, 'Estrutura escura na região dos olhos; confirmação visual recomendada.')
-      : item('Óculos de proteção', 'nao_avaliavel', 0.2, 'Óculos transparentes não podem ser confirmados com segurança por esta heurística.');
-  }
-
-  const wristResults = [leftWrist, rightWrist]
-    .map((point) => pointRegion(point, bodyHeight, 0.12, 0.12))
-    .filter((region): region is Region => region !== null)
-    .map((region) => statsForRegion(context, region, targetWidth, targetHeight));
-
-  let luvas = unavailable('Luvas', 'Punhos/mãos não localizados.');
-  if (wristResults.length) {
-    const skinAverage = wristResults.reduce((sum, stats) => sum + ratio(stats.skin, stats.count), 0) / wristResults.length;
-    const saturationAverage = wristResults.reduce((sum, stats) => sum + ratio(stats.saturated, stats.count), 0) / wristResults.length;
-    if (skinAverage < 0.14 && saturationAverage > 0.28) luvas = item('Luvas', 'detectado', 0.58, 'Baixa presença de pele e material colorido nas mãos.');
-    else if (skinAverage > 0.42) luvas = item('Luvas', 'nao_detectado', 0.6, 'Padrão de pele aparente nas mãos.');
-    else luvas = item('Luvas', 'incerto', 0.42, 'Mãos parcialmente visíveis ou iluminação insuficiente.');
-  }
-
-  const ankleResults = [leftAnkle, rightAnkle]
-    .map((point) => pointRegion(point, bodyHeight, 0.16, 0.14))
-    .filter((region): region is Region => region !== null)
-    .map((region) => statsForRegion(context, region, targetWidth, targetHeight));
-
-  let calcado = unavailable('Calçado fechado', 'Pés/tornozelos não localizados.');
-  if (ankleResults.length) {
-    const skinAverage = ankleResults.reduce((sum, stats) => sum + ratio(stats.skin, stats.count), 0) / ankleResults.length;
-    const darkAverage = ankleResults.reduce((sum, stats) => sum + ratio(stats.dark, stats.count), 0) / ankleResults.length;
-    if (skinAverage < 0.18 && darkAverage > 0.18) calcado = item('Calçado fechado', 'detectado', 0.55, 'Material não semelhante à pele detectado nos pés.');
-    else if (skinAverage > 0.34) calcado = item('Calçado fechado', 'nao_detectado', 0.52, 'Região dos pés com pele aparente.');
-    else calcado = item('Calçado fechado', 'incerto', 0.4, 'Não é possível diferenciar calçado de segurança de calçado comum.');
-  }
-
-  let cinturao = unavailable('Cinturão paraquedista', 'Tronco e cintura não estão suficientemente visíveis.');
-  if (leftShoulder && rightShoulder && leftHip && rightHip) {
-    const minX = Math.min(leftShoulder.x, rightShoulder.x, leftHip.x, rightHip.x);
-    const maxX = Math.max(leftShoulder.x, rightShoulder.x, leftHip.x, rightHip.x);
-    const minY = Math.min(leftShoulder.y, rightShoulder.y);
-    const maxY = Math.max(leftHip.y, rightHip.y);
-    const stats = statsForRegion(
+  const faceCenter = nose ?? leftEye ?? rightEye;
+  if (faceCenter) {
+    const helmetStats = regionStats(
       context,
       {
-        x: minX - bodyHeight * 0.04,
-        y: minY,
-        width: Math.max(10, maxX - minX + bodyHeight * 0.08),
-        height: Math.max(10, maxY - minY + bodyHeight * 0.06),
+        x: faceCenter.x - bodyHeight * 0.12,
+        y: faceCenter.y - bodyHeight * 0.21,
+        width: bodyHeight * 0.24,
+        height: bodyHeight * 0.18,
       },
       targetWidth,
       targetHeight,
     );
-    const dark = ratio(stats.dark, stats.count);
-    const saturated = ratio(stats.saturated, stats.count);
-
-    if (dark > 0.24 && saturated > 0.18) {
-      cinturao = item(
-        'Cinturão paraquedista',
-        'incerto',
-        0.58,
-        'Há elementos visuais compatíveis com tiras na região do tronco/cintura; confirme o cinturão e seus pontos de ajuste.',
-      );
-    } else {
-      cinturao = item(
-        'Cinturão paraquedista',
-        'nao_avaliavel',
-        0.25,
-        'Não há evidência visual suficiente para confirmar o cinturão com segurança.',
-      );
-    }
+    result.capacete = detectHelmet(helmetStats);
   }
 
-  let talabarte = unavailable('Talabarte', 'O sistema de conexão não está visível com detalhe suficiente.');
-  if (leftHip && rightHip && (leftWrist || rightWrist)) {
-    const minX = Math.min(leftHip.x, rightHip.x, leftWrist?.x ?? leftHip.x, rightWrist?.x ?? rightHip.x);
-    const maxX = Math.max(leftHip.x, rightHip.x, leftWrist?.x ?? leftHip.x, rightWrist?.x ?? rightHip.x);
-    const minY = Math.min(leftHip.y, rightHip.y, leftWrist?.y ?? leftHip.y, rightWrist?.y ?? rightHip.y);
-    const maxY = Math.max(leftHip.y, rightHip.y, leftWrist?.y ?? leftHip.y, rightWrist?.y ?? rightHip.y);
-    const stats = statsForRegion(
+  if (leftEye && rightEye) {
+    const eyeDistance = Math.max(12, Math.abs(rightEye.x - leftEye.x));
+    const glassesStats = regionStats(
       context,
-      { x: minX, y: minY, width: Math.max(12, maxX - minX), height: Math.max(12, maxY - minY) },
+      {
+        x: Math.min(leftEye.x, rightEye.x) - eyeDistance * 0.50,
+        y: Math.min(leftEye.y, rightEye.y) - eyeDistance * 0.42,
+        width: eyeDistance * 2.0,
+        height: eyeDistance * 0.90,
+      },
       targetWidth,
       targetHeight,
     );
-    const dark = ratio(stats.dark, stats.count);
-    const saturated = ratio(stats.saturated, stats.count);
-
-    talabarte = dark > 0.22 || saturated > 0.44
-      ? item(
-          'Talabarte',
-          'incerto',
-          0.5,
-          'Há elemento linear/contrastante próximo à cintura ou mãos; confirme visualmente se é o talabarte e se está conectado.',
-        )
-      : item(
-          'Talabarte',
-          'nao_avaliavel',
-          0.2,
-          'Não foi possível distinguir talabarte e conectores com segurança nesta imagem.',
-        );
+    result.oculos = detectGlasses(glassesStats);
   }
 
-  const travaQuedas = item(
-    'Trava-quedas',
-    'nao_avaliavel',
-    0.15,
-    'O trava-quedas exige visualização nítida do dispositivo e de sua linha de ancoragem; confirme manualmente quando não estiver claramente visível.',
-  );
+  const handRadius = Math.max(12, bodyHeight * 0.065);
+  const handStats = [leftWrist, rightWrist]
+    .map((point) => pointRegion(point, handRadius))
+    .filter((region): region is Region => Boolean(region))
+    .map((region) => regionStats(context, region, targetWidth, targetHeight));
+  result.luvas = detectGloves(handStats);
 
-  return { capacete, oculos, colete, luvas, calcado, cinturao, talabarte, travaQuedas };
+  const earRadius = Math.max(10, bodyHeight * 0.055);
+  const earStats = [leftEar, rightEar]
+    .map((point) => pointRegion(point, earRadius))
+    .filter((region): region is Region => Boolean(region))
+    .map((region) => regionStats(context, region, targetWidth, targetHeight));
+  result.protetorAuricular = detectHearingProtection(earStats);
+
+  return result;
 }
 
-
 export function inspectPpeWithoutPose(source: HTMLImageElement): PpeAssessment {
-  const sourceWidth = source.naturalWidth;
-  const sourceHeight = source.naturalHeight;
-  const unavailable = (label: string, note: string) => item(label, 'nao_avaliavel', 0, note);
+  const result = emptyAssessment();
+  const width = source.naturalWidth;
+  const height = source.naturalHeight;
+  if (width <= 0 || height <= 0) return result;
 
-  const fallback: PpeAssessment = {
-    capacete: unavailable('Capacete', 'Cabeça não localizada pelo detector corporal.'),
-    oculos: unavailable('Óculos de proteção', 'Região dos olhos sem referência corporal confiável.'),
-    colete: unavailable('Colete/vestimenta refletiva', 'Tronco sem referência corporal confiável.'),
-    luvas: unavailable('Luvas', 'Mãos sem referência corporal confiável.'),
-    calcado: unavailable('Calçado fechado', 'Pés sem referência corporal confiável.'),
-    cinturao: unavailable('Cinturão paraquedista', 'Cintura sem referência corporal confiável.'),
-    talabarte: unavailable('Talabarte', 'Sistema de conexão sem referência corporal confiável.'),
-    travaQuedas: unavailable('Trava-quedas', 'Dispositivo sem referência corporal confiável.'),
-  };
-
-  if (sourceWidth <= 0 || sourceHeight <= 0) return fallback;
-
-  const targetWidth = 360;
-  const scale = targetWidth / sourceWidth;
-  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+  const targetWidth = 420;
+  const scale = targetWidth / width;
+  const targetHeight = Math.max(1, Math.round(height * scale));
   const canvas = document.createElement('canvas');
   canvas.width = targetWidth;
   canvas.height = targetHeight;
   const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) return fallback;
+  if (!context) return result;
 
   context.drawImage(source, 0, 0, targetWidth, targetHeight);
 
-  const headStats = statsForRegion(
+  // Sem pose, só fazemos uma triagem conservadora de capacete e luvas.
+  const top = regionStats(
     context,
-    {
-      x: targetWidth * 0.18,
-      y: 0,
-      width: targetWidth * 0.64,
-      height: targetHeight * 0.34,
-    },
+    { x: targetWidth * 0.20, y: 0, width: targetWidth * 0.60, height: targetHeight * 0.34 },
     targetWidth,
     targetHeight,
   );
-  const torsoStats = statsForRegion(
+  const lower = regionStats(
     context,
-    {
-      x: targetWidth * 0.08,
-      y: targetHeight * 0.28,
-      width: targetWidth * 0.84,
-      height: targetHeight * 0.55,
-    },
-    targetWidth,
-    targetHeight,
-  );
-  const handAreaStats = statsForRegion(
-    context,
-    {
-      x: targetWidth * 0.16,
-      y: targetHeight * 0.50,
-      width: targetWidth * 0.68,
-      height: targetHeight * 0.38,
-    },
+    { x: targetWidth * 0.14, y: targetHeight * 0.48, width: targetWidth * 0.72, height: targetHeight * 0.38 },
     targetWidth,
     targetHeight,
   );
 
-  const headHigh = ratio(headStats.highVis, headStats.count);
-  const headSat = ratio(headStats.saturated, headStats.count);
-  if (headHigh > 0.055) {
-    fallback.capacete = item(
-      'Capacete',
-      'detectado',
-      Math.min(0.82, 0.58 + headHigh * 1.8),
-      'Objeto de alta visibilidade identificado na região superior da pessoa.',
-    );
-  } else if (headSat > 0.3) {
-    fallback.capacete = item(
-      'Capacete',
-      'incerto',
-      0.42,
-      'Há cor/objeto destacado na região superior; confirmar capacete visualmente.',
-    );
+  result.capacete = detectHelmet(top);
+  if (lower.skin < 0.34 && (lower.saturated + lower.dark + lower.edge) > 0.62) {
+    result.luvas = item('Luvas', 'incerto', 0.44, 'Há material compatível com luvas, mas as mãos não foram localizadas.');
   }
 
-  const torsoHigh = ratio(torsoStats.highVis, torsoStats.count);
-  const torsoSat = ratio(torsoStats.saturated, torsoStats.count);
-  if (torsoHigh > 0.18) {
-    fallback.colete = item(
-      'Colete/vestimenta refletiva',
-      'detectado',
-      Math.min(0.82, 0.58 + torsoHigh * 1.4),
-      'Vestimenta de alta visibilidade identificada no tronco.',
-    );
-  } else if (torsoHigh > 0.075 || torsoSat > 0.42) {
-    fallback.colete = item(
-      'Colete/vestimenta refletiva',
-      'incerto',
-      0.42,
-      'Há vestimenta colorida, mas a característica refletiva precisa de confirmação.',
-    );
-  }
-
-  const handTan = ratio(handAreaStats.tan, handAreaStats.count);
-  const handSkin = ratio(handAreaStats.skin, handAreaStats.count);
-  const handSat = ratio(handAreaStats.saturated, handAreaStats.count);
-  if (handTan > 0.30 && handSkin < 0.28 && handSat > 0.40) {
-    fallback.luvas = item(
-      'Luvas',
-      'detectado',
-      Math.min(0.78, 0.58 + handTan * 0.35),
-      'Material compatível com luvas identificado na região das mãos/braços.',
-    );
-  }
-
-  return fallback;
+  return result;
 }
