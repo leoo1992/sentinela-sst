@@ -1,4 +1,4 @@
-export type ModuleId = 'epi' | 'altura' | 'ergonomia' | 'cargas';
+export type ModuleId = 'epi';
 export type Severity = 'ok' | 'info' | 'attention' | 'alert';
 export type DetectionStatus = 'detectado' | 'nao_detectado' | 'incerto' | 'nao_avaliavel';
 
@@ -46,12 +46,8 @@ export interface PpeItem {
 export interface PpeAssessment {
   capacete: PpeItem;
   oculos: PpeItem;
-  colete: PpeItem;
   luvas: PpeItem;
-  calcado: PpeItem;
-  cinturao: PpeItem;
-  talabarte: PpeItem;
-  travaQuedas: PpeItem;
+  protetorAuricular: PpeItem;
 }
 
 export interface Finding {
@@ -65,8 +61,8 @@ export interface EvaluationPayload {
   module: ModuleId;
   metrics: PoseMetrics | null;
   ppe: PpeAssessment | null;
-  zoneRisk: boolean;
-  liftingPhase: string | null;
+  zoneRisk: false;
+  liftingPhase: null;
 }
 
 export interface EvaluationResponse {
