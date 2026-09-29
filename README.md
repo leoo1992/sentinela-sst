@@ -7,11 +7,10 @@ Aplicação full-stack de visão computacional em tempo real voltada a Seguranç
 O projeto está focado exclusivamente em **Inspeção de EPI**.
 
 Itens avaliados:
-- capacete;
-- óculos de proteção;
-- colete ou vestimenta refletiva;
-- luvas de proteção;
-- calçado fechado.
+- óculos, independentemente do tipo ou especificação;
+- capacete, independentemente do tipo, cor ou especificação;
+- luvas, independentemente do tipo ou material;
+- protetor auricular, incluindo plug e abafador/concha.
 
 Fotos enviadas passam por análise combinada entre TensorFlow/MoveNet, heurísticas locais e OpenCV no backend.
 
