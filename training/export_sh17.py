@@ -58,8 +58,7 @@ def main() -> None:
     metadata = {
         "source_dataset": "SH17",
         "source_release": "https://github.com/ahmadmughees/SH17dataset/releases/tag/v1",
-        "classes": {"2": "ear-mufs", "8": "glasses", "9": "gloves", "10": "helmet"},
-        "excluded_audio_classes": ["headphones", "headset", "earbuds", "earphones"],
+        "classes": {"8": "glasses", "9": "gloves", "10": "helmet"},
         "models": exported,
         "errors": errors,
     }

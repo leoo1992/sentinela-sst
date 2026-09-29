@@ -21,10 +21,6 @@ def _synthetic_worker_image() -> tuple[str, dict]:
     cv2.rectangle(image, (308, 185), (362, 218), (20, 20, 20), 7)
     cv2.line(image, (292, 201), (308, 201), (20, 20, 20), 5)
 
-    # Abafadores nas orelhas.
-    cv2.circle(image, (220, 205), 30, (220, 35, 35), -1)
-    cv2.circle(image, (380, 205), 30, (220, 35, 35), -1)
-
     # Luvas nas mãos.
     cv2.rectangle(image, (150, 420), (235, 505), (35, 35, 190), -1)
     cv2.rectangle(image, (365, 420), (450, 505), (35, 35, 190), -1)
@@ -36,8 +32,6 @@ def _synthetic_worker_image() -> tuple[str, dict]:
         "nose": {"x": 0.50, "y": 0.34, "score": 0.99},
         "left_eye": {"x": 0.44, "y": 0.33, "score": 0.99},
         "right_eye": {"x": 0.56, "y": 0.33, "score": 0.99},
-        "left_ear": {"x": 0.37, "y": 0.34, "score": 0.99},
-        "right_ear": {"x": 0.63, "y": 0.34, "score": 0.99},
         "left_shoulder": {"x": 0.36, "y": 0.50, "score": 0.99},
         "right_shoulder": {"x": 0.64, "y": 0.50, "score": 0.99},
         "left_wrist": {"x": 0.32, "y": 0.77, "score": 0.99},
@@ -47,7 +41,7 @@ def _synthetic_worker_image() -> tuple[str, dict]:
     return base64.b64encode(encoded.tobytes()).decode("ascii"), pose
 
 
-def test_opencv_detecta_epis_visuais_e_mantem_audio_para_confirmacao_treinada():
+def test_opencv_detecta_oculos_capacete_e_luvas():
     image_base64, pose = _synthetic_worker_image()
 
     response = analyze_ppe_image(
@@ -63,4 +57,3 @@ def test_opencv_detecta_epis_visuais_e_mantem_audio_para_confirmacao_treinada():
     assert response["items"]["oculos"]["status"] == "detectado"
     assert response["items"]["capacete"]["status"] == "detectado"
     assert response["items"]["luvas"]["status"] == "detectado"
-    assert response["items"]["protetorAuricular"]["status"] in {"incerto", "nao_avaliavel"}

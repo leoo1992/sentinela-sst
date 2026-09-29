@@ -29,7 +29,6 @@ function emptyAssessment(): PpeAssessment {
     oculos: unavailable('Óculos', 'Região dos olhos não localizada.'),
     capacete: unavailable('Capacete', 'Região da cabeça não localizada.'),
     luvas: unavailable('Luvas', 'Região das mãos não localizada.'),
-    protetorAuricular: unavailable('Protetor auricular', 'Região das orelhas não localizada.'),
   };
 }
 
@@ -213,40 +212,6 @@ function detectGloves(regions: RegionStats[]): PpeItem {
   return item('Luvas', 'incerto', 0.44, 'As mãos estão visíveis, mas não foi possível confirmar luvas.');
 }
 
-function detectHearingProtection(regions: RegionStats[]): PpeItem {
-  if (!regions.length) return unavailable('Protetor auricular', 'Orelhas não localizadas.');
-
-  const signals = regions.map(
-    (value) =>
-      (1 - value.skin) * 0.45 +
-      value.saturated * 0.55 +
-      value.dark * 0.45 +
-      value.edge * 0.85 +
-      Math.min(1, value.variance / 1700) * 0.40,
-  );
-
-  const strongest = Math.max(...signals);
-  if (strongest > 0.76) {
-    return item(
-      'Protetor auricular',
-      'incerto',
-      Math.min(0.76, 0.52 + strongest * 0.16),
-      'Há forte indício visual na região das orelhas, mas a confirmação do EPI auditivo depende do detector treinado.',
-    );
-  }
-
-  if (strongest > 0.56) {
-    return item(
-      'Protetor auricular',
-      'incerto',
-      0.46,
-      'Há alteração visual na região das orelhas, mas não foi possível confirmar plug ou abafador.',
-    );
-  }
-
-  return item('Protetor auricular', 'nao_detectado', 0.55, 'Proteção auditiva não foi identificada na região das orelhas.');
-}
-
 export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: PoseLike): PpeAssessment {
   const result = emptyAssessment();
   const box = bodyBox(pose);
@@ -275,8 +240,6 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
   const nose = mapPoint('nose');
   const leftEye = mapPoint('left_eye');
   const rightEye = mapPoint('right_eye');
-  const leftEar = mapPoint('left_ear');
-  const rightEar = mapPoint('right_ear');
   const leftWrist = mapPoint('left_wrist');
   const rightWrist = mapPoint('right_wrist');
 
@@ -318,13 +281,6 @@ export function inspectPpe(source: HTMLVideoElement | HTMLImageElement, pose: Po
     .filter((region): region is Region => Boolean(region))
     .map((region) => regionStats(context, region, targetWidth, targetHeight));
   result.luvas = detectGloves(handStats);
-
-  const earRadius = Math.max(10, bodyHeight * 0.055);
-  const earStats = [leftEar, rightEar]
-    .map((point) => pointRegion(point, earRadius))
-    .filter((region): region is Region => Boolean(region))
-    .map((region) => regionStats(context, region, targetWidth, targetHeight));
-  result.protetorAuricular = detectHearingProtection(earStats);
 
   return result;
 }

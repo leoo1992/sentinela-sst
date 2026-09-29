@@ -15,12 +15,11 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-EPI_KEYS = ["oculos", "capacete", "luvas", "protetorAuricular"]
+EPI_KEYS = ["oculos", "capacete", "luvas"]
 PPE_LABELS = {
     "oculos": "Óculos",
     "capacete": "Capacete",
     "luvas": "Luvas",
-    "protetorAuricular": "Protetor auricular",
 }
 
 
@@ -110,7 +109,7 @@ def evaluate(request: EvaluationRequest) -> EvaluationResponse:
         findings.append(_finding(
             "ppe-waiting",
             "Preparando inspeção",
-            "Mantenha cabeça, olhos, orelhas e mãos visíveis.",
+            "Mantenha cabeça, olhos e mãos visíveis.",
             "info",
         ))
 
@@ -169,13 +168,6 @@ def _fuse_ppe_item(key_name: str, local_raw, opencv_raw, ensemble_raw) -> dict:
         "opencv": (_probability(opencv_raw, key_name), 0.25),
         "ensemble": (_probability(ensemble_raw, key_name), 0.60),
     }
-    if key_name == "protetorAuricular":
-        sources = {
-            "local": (_probability(local_raw, key_name), 0.15),
-            "opencv": (_probability(opencv_raw, key_name), 0.30),
-            "ensemble": (_probability(ensemble_raw, key_name), 0.55),
-        }
-
     used = [(name, probability, weight) for name, (probability, weight) in sources.items() if probability is not None]
     if not used:
         return {
@@ -188,29 +180,6 @@ def _fuse_ppe_item(key_name: str, local_raw, opencv_raw, ensemble_raw) -> dict:
     total_weight = sum(weight for _, _, weight in used)
     probability = sum(probability * weight for _, probability, weight in used) / max(total_weight, 1e-9)
     evidence_count = len(used)
-
-    ensemble_value = _plain_item(ensemble_raw, key_name)
-    ensemble_detected = bool(
-        ensemble_value
-        and ensemble_value["status"] == "detectado"
-        and ensemble_value["confidence"] >= 0.42
-    )
-
-    if key_name == "protetorAuricular" and not ensemble_detected:
-        strongest_support = max((p for name, p, _ in used if name != "ensemble"), default=0.0)
-        if strongest_support >= 0.55:
-            return {
-                "label": PPE_LABELS[key_name],
-                "status": "incerto",
-                "confidence": strongest_support,
-                "note": "Há indício visual próximo às orelhas, mas não houve confirmação do detector treinado de proteção auditiva.",
-            }
-        return {
-            "label": PPE_LABELS[key_name],
-            "status": "nao_avaliavel",
-            "confidence": probability,
-            "note": "Proteção auditiva não foi confirmada. Fones de áudio comuns não são considerados EPI.",
-        }
 
     if probability >= 0.58:
         status = "detectado"
@@ -307,7 +276,6 @@ def health():
         "image_fusion": "movenet+opencv+yolo8n+yolo10n+wbf+sliced-inference",
         "trained_model_status": model_runtime_status(),
         "items": EPI_KEYS,
-        "audio_policy": "Somente proteção auditiva EPI; headphones/headsets/earbuds não são classes aceitas.",
     }
 
 

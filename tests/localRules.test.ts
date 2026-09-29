@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { evaluateLocally } from '../lib/localRules';
 
 describe('inspeção local de EPI', () => {
-  it('mantém avaliação dos quatro EPIs mesmo sem pose corporal completa', () => {
+  it('mantém avaliação dos três EPIs mesmo sem pose corporal completa', () => {
     const result = evaluateLocally({
       module: 'epi',
       metrics: null,
@@ -10,7 +10,6 @@ describe('inspeção local de EPI', () => {
         capacete: { label: 'Capacete', status: 'detectado', confidence: 0.95 },
         oculos: { label: 'Óculos', status: 'detectado', confidence: 0.88 },
         luvas: { label: 'Luvas', status: 'detectado', confidence: 0.86 },
-        protetorAuricular: { label: 'Protetor auricular', status: 'detectado', confidence: 0.82 },
       },
       zoneRisk: false,
       liftingPhase: null,
@@ -19,6 +18,5 @@ describe('inspeção local de EPI', () => {
     expect(result.findings.some((entry) => entry.code === 'epi-capacete-ok')).toBe(true);
     expect(result.findings.some((entry) => entry.code === 'epi-oculos-ok')).toBe(true);
     expect(result.findings.some((entry) => entry.code === 'epi-luvas-ok')).toBe(true);
-    expect(result.findings.some((entry) => entry.code === 'epi-protetorAuricular-ok')).toBe(true);
   });
 });

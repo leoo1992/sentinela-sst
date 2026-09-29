@@ -23,10 +23,8 @@ MODEL_CACHE_DIR = Path(os.environ.get("SENTINELA_MODEL_CACHE", "/tmp/sentinela-s
 DEFAULT_MODEL_BASE_URL = "https://github.com/leoo1992/sentinela-sst/releases/download/ppe-models-v1"
 MODEL_BASE_URL = os.environ.get("SENTINELA_MODEL_BASE_URL", DEFAULT_MODEL_BASE_URL).rstrip("/")
 
-# Ordem canônica de sh17.yaml. Só estas classes PPE são aceitas.
-# Fones/headsets/earbuds comuns não são mapeados como EPI.
+# Ordem canônica de sh17.yaml. Só as três classes usadas pelo Sentinela são aceitas.
 SH17_TARGET_CLASSES: dict[int, str] = {
-    2: "protetorAuricular",  # ear-mufs / abafador industrial
     8: "oculos",
     9: "luvas",
     10: "capacete",
@@ -36,14 +34,7 @@ EPI_LABELS = {
     "oculos": "Óculos",
     "capacete": "Capacete",
     "luvas": "Luvas",
-    "protetorAuricular": "Protetor auricular",
 }
-
-REJECTED_AUDIO_TERMS = {
-    "headphone", "headphones", "headset", "earbud", "earbuds",
-    "earphone", "earphones", "fone", "fones",
-}
-
 
 @dataclass(frozen=True)
 class Detection:
@@ -362,7 +353,7 @@ def _fuse_models(detections_by_model: list[list[Detection]], weights: list[float
     if len(nonempty) == 1 or _weighted_boxes_fusion is None:
         return _fallback_fusion([value[0] for value in nonempty])
 
-    keys = ["oculos", "capacete", "luvas", "protetorAuricular"]
+    keys = ["oculos", "capacete", "luvas"]
     key_to_id = {key: index for index, key in enumerate(keys)}
     id_to_key = {index: key for key, index in key_to_id.items()}
     boxes_list, scores_list, labels_list, active_weights = [], [], [], []
@@ -385,44 +376,6 @@ def _fuse_models(detections_by_model: list[list[Detection]], weights: list[float
     ]
 
 
-def _pose_point(pose_keypoints: Optional[dict[str, Any]], name: str) -> Optional[tuple[float, float, float]]:
-    if not pose_keypoints:
-        return None
-    raw = pose_keypoints.get(name)
-    if not isinstance(raw, dict):
-        return None
-    try:
-        score = float(raw.get("score", 0))
-        x = float(raw.get("x", 0))
-        y = float(raw.get("y", 0))
-    except (TypeError, ValueError):
-        return None
-    if score < 0.20 or not (0 <= x <= 1 and 0 <= y <= 1):
-        return None
-    return x, y, score
-
-
-def _filter_hearing_detection(detection: Detection, pose_keypoints: Optional[dict[str, Any]]) -> bool:
-    if detection.key != "protetorAuricular":
-        return True
-    x1, y1, x2, y2 = detection.box
-    if x2 - x1 > 0.28 or y2 - y1 > 0.30:
-        return False
-
-    ears = [_pose_point(pose_keypoints, "left_ear"), _pose_point(pose_keypoints, "right_ear")]
-    ears = [ear for ear in ears if ear]
-    if not ears:
-        return (y1 + y2) / 2 <= 0.58
-
-    center_x, center_y = (x1 + x2) / 2, (y1 + y2) / 2
-    shoulders = [_pose_point(pose_keypoints, "left_shoulder"), _pose_point(pose_keypoints, "right_shoulder")]
-    shoulders = [point for point in shoulders if point]
-    radius = 0.11
-    if len(shoulders) == 2:
-        radius = max(0.06, min(0.14, abs(shoulders[1][0] - shoulders[0][0]) * 0.32))
-    return any((center_x - ear[0]) ** 2 + (center_y - ear[1]) ** 2 <= radius ** 2 for ear in ears)
-
-
 def _item_from_score(key: str, score: Optional[float]) -> dict[str, Any]:
     label = EPI_LABELS[key]
     if score is None:
@@ -432,7 +385,7 @@ def _item_from_score(key: str, score: Optional[float]) -> dict[str, Any]:
         }
 
     strong = {
-        "oculos": 0.48, "capacete": 0.46, "luvas": 0.45, "protetorAuricular": 0.42,
+        "oculos": 0.48, "capacete": 0.46, "luvas": 0.45,
     }[key]
     weak = strong * 0.58
     if score >= strong:
@@ -470,10 +423,9 @@ def analyze_ppe_ensemble(image_base64: str, pose_keypoints: Optional[dict[str, A
             weights.append(spec.weight)
 
     fused = _fuse_models(detections_by_model, weights)
-    fused = [value for value in fused if _filter_hearing_detection(value, pose_keypoints)]
 
     scores: dict[str, Optional[float]] = {
-        "oculos": None, "capacete": None, "luvas": None, "protetorAuricular": None,
+        "oculos": None, "capacete": None, "luvas": None,
     }
     for detection in fused:
         current = scores[detection.key]

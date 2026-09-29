@@ -27,11 +27,11 @@ export function evaluateLocally(payload: EvaluationPayload): EvaluationResponse 
     findings.push(finding(
       'ppe-waiting',
       'Preparando inspeção',
-      'Mantenha cabeça, olhos, orelhas e mãos visíveis.',
+      'Mantenha cabeça, olhos e mãos visíveis.',
       'info',
     ));
   } else {
-    const epiKeys: Array<keyof PpeAssessment> = ['capacete', 'oculos', 'luvas', 'protetorAuricular'];
+    const epiKeys: Array<keyof PpeAssessment> = ['capacete', 'oculos', 'luvas'];
     epiKeys.forEach((key) => findings.push(statusFinding(key, payload.ppe![key])));
   }
 

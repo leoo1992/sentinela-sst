@@ -47,7 +47,6 @@ export interface PpeAssessment {
   capacete: PpeItem;
   oculos: PpeItem;
   luvas: PpeItem;
-  protetorAuricular: PpeItem;
 }
 
 export interface Finding {

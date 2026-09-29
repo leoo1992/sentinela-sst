@@ -26,8 +26,7 @@ export default function SentinelaApp() {
           <p className="sectionKicker">INSPEÇÃO DE EPI</p>
           <h2>Identificação visual de equipamentos de proteção</h2>
           <p>
-            Envie uma foto ou use a câmera para identificar óculos, capacete, luvas e
-            protetor auricular — plug ou abafador/concha.
+            Envie uma foto ou use a câmera para identificar óculos, capacete e luvas.
           </p>
         </div>
       </section>

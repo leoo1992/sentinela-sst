@@ -31,14 +31,12 @@ const EPI_KEYS: Array<keyof PpeAssessment> = [
   'oculos',
   'capacete',
   'luvas',
-  'protetorAuricular',
 ];
 
 const EPI_LABELS: Record<keyof PpeAssessment, string> = {
   oculos: 'Óculos',
   capacete: 'Capacete',
   luvas: 'Luvas',
-  protetorAuricular: 'Protetor auricular',
 };
 
 const STATUS_TEXT: Record<PpeItem['status'], string> = {
@@ -62,7 +60,6 @@ function emptyAssessment(): PpeAssessment {
     oculos: unavailableItem('oculos'),
     capacete: unavailableItem('capacete'),
     luvas: unavailableItem('luvas'),
-    protetorAuricular: unavailableItem('protetorAuricular'),
   };
 }
 
@@ -558,7 +555,7 @@ export default function VisionCamera() {
           <div className="analysisLoadingCard">
             <span className="analysisSpinner" aria-hidden="true" />
             <strong>Analisando imagem</strong>
-            <p>Verificando óculos, capacete, luvas e protetor auricular…</p>
+            <p>Verificando óculos, capacete e luvas…</p>
           </div>
         </div>
       )}

@@ -7,7 +7,7 @@ A produção usa dois detectores SH17 leves e independentes, exportados para ONN
 - YOLOv8n SH17;
 - YOLOv10n SH17.
 
-As classes consumidas são apenas `glasses`, `gloves`, `helmet` e `ear-mufs`. **Headphones, headset, earbuds e earphones não são classes aceitas como EPI.** Para reduzir falsos positivos, `ear-mufs` também precisa aparecer junto à região das orelhas quando há pose disponível.
+As classes consumidas pelo Sentinela são apenas `glasses`, `gloves` e `helmet`.
 
 O workflow `PPE model assets` baixa os pesos públicos SH17, exporta ONNX e publica os arquivos no release `ppe-models-v1`. O runtime usa OpenCV DNN e baixa os ONNX para `/tmp`, sem carregar PyTorch na Vercel.
 
@@ -22,10 +22,7 @@ names:
   0: glasses
   1: helmet
   2: gloves
-  3: hearing_protection
 ```
-
-Para `hearing_protection`, mantenha abafadores/conchas e plugs como positivos. Imagens de fones de música/headsets/earbuds devem entrar como **negativos de fundo**, sem anotação de EPI.
 
 ```bash
 pip install -r training/requirements.txt

@@ -6,16 +6,13 @@ Aplicação full-stack de visão computacional para **inspeção visual de EPI**
 
 - óculos, independentemente do tipo ou especificação;
 - capacete, independentemente do tipo, cor ou especificação;
-- luvas, independentemente do tipo ou material;
-- protetor auricular de segurança, incluindo plug e abafador/concha.
-
-**Fones de áudio comuns (headphones, headsets, earbuds/earphones) não são classes aceitas como EPI.** O detector treinado de proteção auditiva usa somente a classe industrial `ear-mufs` do SH17 e exige proximidade com a região das orelhas quando a pose está disponível.
+- luvas, independentemente do tipo ou material.
 
 ## Ensemble de visão computacional
 
 Fotos enviadas usam várias fontes independentes de evidência:
 
-1. MoveNet/TensorFlow.js localiza cabeça, olhos, orelhas e mãos;
+1. MoveNet/TensorFlow.js localiza cabeça, olhos e mãos;
 2. OpenCV executa análise geométrica/visual das regiões corporais;
 3. YOLOv8n treinado no SH17 roda em ONNX;
 4. YOLOv10n treinado no SH17 roda em ONNX;
@@ -29,17 +26,11 @@ O runtime usa **OpenCV DNN para ONNX**, evitando PyTorch dentro da função Verc
 
 O workflow `.github/workflows/models.yml` baixa os pesos benchmark públicos SH17 para YOLOv8n e YOLOv10n, exporta ambos para ONNX e publica os artefatos no release `ppe-models-v1` sem criar commit adicional.
 
-O SH17 possui classes `glasses`, `ear-mufs`, `gloves` e `helmet`, entre outras. Somente essas quatro classes relevantes são consumidas pelo Sentinela.
+O SH17 possui classes como `glasses`, `gloves` e `helmet`, entre outras. Somente essas três classes são consumidas pelo Sentinela.
 
 ## YOLO26 + RT-DETR
 
 A pasta `training/` inclui pipeline para treinar **YOLO26** e **RT-DETR** no mesmo dataset PPE e exportar ONNX. Eles só devem substituir os modelos atuais depois de fine-tuning e validação por classe; RT-DETR genérico COCO não possui as classes PPE necessárias.
-
-Para proteção auditiva, o conjunto de treino de próxima geração deve incluir:
-
-- abafadores/conchas como positivos;
-- plugs auriculares como positivos;
-- headphones/headsets/earbuds/earphones comuns como **imagens negativas**, sem anotação de EPI.
 
 ## Privacidade
 

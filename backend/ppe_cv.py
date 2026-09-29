@@ -9,7 +9,6 @@ LABELS = {
     "oculos": "Óculos",
     "capacete": "Capacete",
     "luvas": "Luvas",
-    "protetorAuricular": "Protetor auricular",
 }
 
 
@@ -236,45 +235,6 @@ def _gloves_item(stats_list: list[dict[str, float]]) -> dict[str, Any]:
     return _item("luvas", "incerto", 0.44, "As mãos estão visíveis, mas não foi possível confirmar luvas.")
 
 
-def _hearing_item(stats_list: list[dict[str, float]]) -> dict[str, Any]:
-    if not stats_list:
-        return _item("protetorAuricular", "nao_avaliavel", 0.0, "Orelhas não localizadas.")
-
-    signals = [
-        (1.0 - value["skin"]) * 0.42
-        + value["saturated"] * 0.62
-        + value["dark"] * 0.48
-        + value["edge"] * 3.6
-        + min(1.0, value["variance"] / 1700.0) * 0.42
-        for value in stats_list
-    ]
-
-    strongest = max(signals)
-
-    if strongest >= 0.86:
-        return _item(
-            "protetorAuricular",
-            "incerto",
-            min(0.76, 0.52 + strongest * 0.16),
-            "Há forte indício visual na região da orelha, mas a confirmação de EPI auditivo exige o detector treinado.",
-        )
-
-    if strongest >= 0.64:
-        return _item(
-            "protetorAuricular",
-            "incerto",
-            0.46,
-            "Há alteração visual na região da orelha, mas não foi possível confirmar plug ou abafador.",
-        )
-
-    return _item(
-        "protetorAuricular",
-        "nao_detectado",
-        0.55,
-        "Protetor auricular não foi identificado na região das orelhas.",
-    )
-
-
 def analyze_ppe_cv(
     image_base64: str,
     module: str,
@@ -287,8 +247,6 @@ def analyze_ppe_cv(
     nose = _pose_point(pose_keypoints, "nose", width, height)
     left_eye = _pose_point(pose_keypoints, "left_eye", width, height)
     right_eye = _pose_point(pose_keypoints, "right_eye", width, height)
-    left_ear = _pose_point(pose_keypoints, "left_ear", width, height)
-    right_ear = _pose_point(pose_keypoints, "right_ear", width, height)
     left_wrist = _pose_point(pose_keypoints, "left_wrist", width, height)
     right_wrist = _pose_point(pose_keypoints, "right_wrist", width, height)
     left_shoulder = _pose_point(pose_keypoints, "left_shoulder", width, height)
@@ -329,8 +287,6 @@ def analyze_ppe_cv(
 
     body_reference = shoulder_width or (face[2] if face else min(width, height) * 0.20)
     hand_radius = max(18.0, body_reference * 0.30)
-    ear_large_radius = max(14.0, body_reference * 0.23)
-    ear_small_radius = max(8.0, body_reference * 0.12)
 
     hand_stats = [
         _stats(_point_region(image, left_wrist, hand_radius)),
@@ -338,25 +294,10 @@ def analyze_ppe_cv(
     ]
     hand_stats = [value for point, value in zip([left_wrist, right_wrist], hand_stats) if point is not None]
 
-    ear_stats: list[dict[str, float]] = []
-    for ear in [left_ear, right_ear]:
-        if ear is None:
-            continue
-        ear_stats.append(_stats(_point_region(image, ear, ear_large_radius)))
-        ear_stats.append(_stats(_point_region(image, ear, ear_small_radius)))
-
-    if not ear_stats and face:
-        x, y, fw, fh = face
-        ear_stats = [
-            _stats(_clip(image, x - fw * 0.18, y + fh * 0.22, fw * 0.30, fh * 0.50)),
-            _stats(_clip(image, x + fw * 0.88, y + fh * 0.22, fw * 0.30, fh * 0.50)),
-        ]
-
     items = {
         "oculos": _glasses_item(_stats(eye_region)) if eye_region is not None else _item("oculos", "nao_avaliavel", 0.0, "Região dos olhos não localizada."),
         "capacete": _helmet_item(_stats(head_region)),
         "luvas": _gloves_item(hand_stats),
-        "protetorAuricular": _hearing_item(ear_stats),
     }
 
     return {
