@@ -28,22 +28,17 @@ type CombinedResponse = {
 };
 
 const EPI_KEYS: Array<keyof PpeAssessment> = [
-  'capacete',
   'oculos',
-  'colete',
+  'capacete',
   'luvas',
-  'calcado',
+  'protetorAuricular',
 ];
 
 const EPI_LABELS: Record<keyof PpeAssessment, string> = {
+  oculos: 'Óculos',
   capacete: 'Capacete',
-  oculos: 'Óculos de proteção',
-  colete: 'Colete/vestimenta refletiva',
-  luvas: 'Luvas de proteção',
-  calcado: 'Calçado fechado',
-  cinturao: 'Cinturão paraquedista',
-  talabarte: 'Talabarte',
-  travaQuedas: 'Trava-quedas',
+  luvas: 'Luvas',
+  protetorAuricular: 'Protetor auricular',
 };
 
 const STATUS_TEXT: Record<PpeItem['status'], string> = {
@@ -64,14 +59,10 @@ function unavailableItem(key: keyof PpeAssessment): PpeItem {
 
 function emptyAssessment(): PpeAssessment {
   return {
-    capacete: unavailableItem('capacete'),
     oculos: unavailableItem('oculos'),
-    colete: unavailableItem('colete'),
+    capacete: unavailableItem('capacete'),
     luvas: unavailableItem('luvas'),
-    calcado: unavailableItem('calcado'),
-    cinturao: unavailableItem('cinturao'),
-    talabarte: unavailableItem('talabarte'),
-    travaQuedas: unavailableItem('travaQuedas'),
+    protetorAuricular: unavailableItem('protetorAuricular'),
   };
 }
 
@@ -567,7 +558,7 @@ export default function VisionCamera() {
           <div className="analysisLoadingCard">
             <span className="analysisSpinner" aria-hidden="true" />
             <strong>Analisando imagem</strong>
-            <p>Verificando capacete, óculos, vestimenta refletiva, luvas e calçado…</p>
+            <p>Verificando óculos, capacete, luvas e protetor auricular…</p>
           </div>
         </div>
       )}
