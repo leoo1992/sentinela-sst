@@ -18,7 +18,9 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: |
+          rm -f package-lock.json
+          npm install --no-audit --no-fund
       - name: Lint
         run: npm run lint
       - name: Type checking
@@ -42,4 +44,4 @@ jobs:
       - name: Install backend test dependencies
         run: pip install "fastapi>=0.141.1" "pydantic>=2.10.0" "pytest>=8.3.4" "httpx>=0.28.1"
       - name: Backend tests
-        run: pytest -q
+        run: PYTHONPATH=. pytest -q

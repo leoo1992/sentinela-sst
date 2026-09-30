@@ -210,15 +210,15 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
     }
   }, []);
 
-  const runFrame = useCallback(async (timestamp: number) => {
+  const runFrame = useCallback(async function frame(timestamp: number) {
     if (!runningRef.current) return;
     const video = videoRef.current, detector = detectorRef.current;
     if (!video || !detector || video.readyState < 2) {
-      animationRef.current = requestAnimationFrame(runFrame);
+      animationRef.current = requestAnimationFrame(frame);
       return;
     }
     if (timestamp - lastInferenceRef.current < 105) {
-      animationRef.current = requestAnimationFrame(runFrame);
+      animationRef.current = requestAnimationFrame(frame);
       return;
     }
     lastInferenceRef.current = timestamp;
@@ -271,7 +271,7 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
       console.error('Falha no frame de visão computacional', frameError);
     }
 
-    animationRef.current = requestAnimationFrame(runFrame);
+    animationRef.current = requestAnimationFrame(frame);
   }, [backendOnline, drawOverlay, moduleId, riskSide, riskWidth, sendToBackend]);
 
   const startCamera = useCallback(async () => {
@@ -317,9 +317,17 @@ export default function VisionCamera({ moduleId }: { moduleId: ModuleId }) {
   }, [running, stopCamera]);
 
   useEffect(() => {
-    setFindings([]);
-    setSummary(running ? 'Módulo alterado. Recalculando análise…' : 'Ative a câmera para iniciar a análise.');
-    currentPpeRef.current = null; setPpe(null); setMetrics(null); setZoneRisk(false); setLiftingPhase(null);
+    const timer = window.setTimeout(() => {
+      setFindings([]);
+      setSummary(running ? 'Módulo alterado. Recalculando análise…' : 'Ative a câmera para iniciar a análise.');
+      currentPpeRef.current = null;
+      setPpe(null);
+      setMetrics(null);
+      setZoneRisk(false);
+      setLiftingPhase(null);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [moduleId, running]);
 
   useEffect(() => {
