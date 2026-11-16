@@ -1,25 +1,25 @@
 # Sentinela SST
 
-Aplicação full-stack de visão computacional em tempo real voltada a Segurança e Saúde no Trabalho. O projeto usa **Next.js + TypeScript** no frontend e **FastAPI + Python** no backend, com deploy unificado na Vercel.
+[English version](README.en.md)
+
+Aplicação full-stack de visão computacional em tempo real voltada a Segurança e Saúde no Trabalho. O frontend usa Next.js e TypeScript; a API usa FastAPI e Python.
 
 ## Módulos
 
 | Módulo | Objetivo |
 | --- | --- |
 | Inspeção de EPI | Checklist visual experimental de capacete, óculos, colete, luvas e calçado. |
-| Segurança em Altura | Pose, capacete e uma zona virtual configurável de borda/risco. |
+| Segurança em Altura | Pose, capacete e zona virtual configurável de borda/risco. |
 | Análise Ergonômica | Esqueleto e métricas de tronco, pescoço, joelhos e assimetrias. |
-| Levantamento de Cargas | Fase aproximada do movimento e indicadores posturais durante o levantamento. |
+| Levantamento de Cargas | Fase aproximada do movimento e indicadores posturais. |
 
 ## Privacidade por arquitetura
 
-A aplicação foi desenhada para **não armazenar vídeo, imagem ou histórico**.
-
-1. A câmera é aberta pelo navegador com getUserMedia.
+1. A câmera é aberta no navegador com `getUserMedia`.
 2. MoveNet/TensorFlow.js executa a estimativa de pose no dispositivo.
-3. O frontend extrai métricas derivadas como ângulos e estados visuais.
+3. O frontend extrai métricas derivadas.
 4. FastAPI recebe apenas essas métricas e aplica regras.
-5. Nenhum frame de vídeo é enviado ao backend.
+5. Frames de vídeo não são enviados ao backend.
 
 ## Stack
 
@@ -27,33 +27,29 @@ Next.js 16, React 19, TypeScript, TensorFlow.js, MoveNet MultiPose, Python 3.12,
 
 ## Executar
 
-    npm install
-    npm run dev
+```bash
+npm install
+npm run dev
+```
 
-Para testar somente a API:
+API isolada:
 
-    python -m venv .venv
-    pip install -e ".[dev]"
-    uvicorn api.index:app --reload --port 8000
-
-Na Vercel, o arquivo api/index.py é empacotado como função Python e o Next.js permanece na raiz do mesmo projeto.
+```bash
+python -m venv .venv
+pip install -e ".[dev]"
+uvicorn api.index:app --reload --port 8000
+```
 
 ## Qualidade
 
-    npm run lint
-    npm run typecheck
-    npm run test
-    npm run build
-    pytest -q
-
-O workflow de CI executa essas verificações na branch **master**.
+```bash
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+pytest -q
+```
 
 ## Limitações
 
-Este é um protótipo técnico e de portfólio, não um sistema certificado para tomada de decisão de SST. A inspeção de EPI usa pose e heurísticas visuais leves para preservar execução no celular e privacidade. EPIs transparentes, pequenos, de cores não previstas ou parcialmente ocultos podem ficar inconclusivos.
-
-Os indicadores não substituem inspeção presencial, APR, análise ergonômica formal, laudos, normas aplicáveis ou profissional legalmente habilitado.
-
-## Licença
-
-MIT.
+Protótipo técnico e de portfólio, não certificado para tomada de decisão de SST. Heurísticas visuais podem produzir resultados inconclusivos; os indicadores não substituem inspeção presencial, APR, análise ergonômica formal, laudos, normas ou profissional habilitado.
